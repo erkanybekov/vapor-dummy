@@ -1,0 +1,22 @@
+{
+    "configurations": [
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:vapor-dummy}",
+            "name": "Debug hello",
+            "program": "${workspaceFolder:vapor-dummy}/.build/debug/hello",
+            "preLaunchTask": "swift: Build Debug hello"
+        },
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:vapor-dummy}",
+            "name": "Release hello",
+            "program": "${workspaceFolder:vapor-dummy}/.build/release/hello",
+            "preLaunchTask": "swift: Build Release hello"
+        }
+    ]
+}
