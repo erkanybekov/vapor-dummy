@@ -1,51 +1,7 @@
 import Vapor
-import Foundation
 
-// MARK: - Request/Response DTOs
-struct LoginRequest: Content {
-    let email: String
-    let password: String
-}
-
-struct RegisterRequest: Content {
-    let email: String
-    let username: String
-    let password: String
-}
-
-struct RefreshTokenRequest: Content {
-    let refreshToken: String
-}
-
-struct AuthResponse: Content {
-    let accessToken: String
-    let refreshToken: String
-    let expiresIn: TimeInterval
-    let tokenType: String
-    let user: UserResponse
-}
-
-struct UserResponse: Content {
-    let id: UUID?
-    let email: String
-    let username: String
-    let isActive: Bool
-    let createdAt: Date?
-    
-    init(from user: User) {
-        self.id = user.id
-        self.email = user.email
-        self.username = user.username
-        self.isActive = user.isActive
-        self.createdAt = user.createdAt
-    }
-}
-
-struct MessageResponse: Content {
-    let message: String
-}
-
-// MARK: - Auth Controller
+// MARK: - Authentication Controller
+// Clean, focused controller that handles authentication endpoints only
 final class AuthController: RouteCollection, Sendable {
     private let authUseCase: AuthUseCase
     
@@ -185,67 +141,6 @@ final class AuthController: RouteCollection, Sendable {
     }
 }
 
-// MARK: - User Authenticatable Extension
+// MARK: - User Authenticatable
+
 extension User: Authenticatable {}
-
-// MARK: - JWT Bearer Authenticator
-struct JWTBearerAuthenticator: AsyncBearerAuthenticator {
-    func authenticate(bearer: BearerAuthorization, for request: Request) async throws {
-        do {
-            // Verify JWT token (JWTKit 5.0+ reads token from request headers)
-            let payload = try await request.jwt.verify(as: AccessTokenPayload.self)
-            
-            // Extract user ID from JWT
-            guard let userId = UUID(uuidString: payload.subject.value) else {
-                return
-            }
-            
-            // Get the user repository from the application
-            guard let userRepository = request.application.userRepository else {
-                return
-            }
-            
-            // Find user
-            guard let user = try await userRepository.find(by: userId), user.isActive else {
-                return
-            }
-            
-            // Authenticate the user
-            request.auth.login(user)
-        } catch {
-            // Authentication failed, but don't throw - just don't authenticate
-            return
-        }
-    }
-}
-
-// MARK: - User Authenticator (for protected routes)
-struct UserAuthenticator: AsyncMiddleware {
-    func respond(to request: Request, chainingTo next: any AsyncResponder) async throws -> Response {
-        guard request.auth.has(User.self) else {
-            throw Abort(.unauthorized, reason: "Authentication required")
-        }
-        return try await next.respond(to: request)
-    }
-}
-
-// MARK: - Application Extensions for Dependency Injection
-extension Application {
-    private struct AuthUseCaseKey: StorageKey, Sendable {
-        typealias Value = AuthUseCase
-    }
-    
-    private struct UserRepositoryKey: StorageKey, Sendable {
-        typealias Value = any UserRepositoryProtocol
-    }
-    
-    var authUseCase: AuthUseCase? {
-        get { storage[AuthUseCaseKey.self] }
-        set { storage[AuthUseCaseKey.self] = newValue }
-    }
-    
-    var userRepository: (any UserRepositoryProtocol)? {
-        get { storage[UserRepositoryKey.self] }
-        set { storage[UserRepositoryKey.self] = newValue }
-    }
-}

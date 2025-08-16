@@ -166,14 +166,17 @@ public final class AuthUseCase: Sendable {
     
     private func isValidEmail(_ email: String) -> Bool {
         let emailRegex = "^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}$"
-        let emailPredicate = NSPredicate(format: "SELF MATCHES %@", emailRegex)
-        return emailPredicate.evaluate(with: email)
+        return email.range(of: emailRegex, options: .regularExpression) != nil
     }
     
     private func isPasswordStrong(_ password: String) -> Bool {
         // At least 8 characters, contains uppercase, lowercase, and number
-        let passwordRegex = "^(?=.*[a-z])(?=.*[A-Z])(?=.*\\d)[a-zA-Z\\d@$!%*?&]{8,}$"
-        let passwordPredicate = NSPredicate(format: "SELF MATCHES %@", passwordRegex)
-        return passwordPredicate.evaluate(with: password)
+        guard password.count >= 8 else { return false }
+        
+        let hasUppercase = password.range(of: "[A-Z]", options: .regularExpression) != nil
+        let hasLowercase = password.range(of: "[a-z]", options: .regularExpression) != nil
+        let hasNumber = password.range(of: "\\d", options: .regularExpression) != nil
+        
+        return hasUppercase && hasLowercase && hasNumber
     }
 }

@@ -27,6 +27,7 @@ public func configure(_ app: Application) async throws {
     // MARK: - Migrations
     app.migrations.add(CreateUser())
     app.migrations.add(CreateRevokedToken())
+    app.migrations.add(CreateTodo())
     
     // Run migrations automatically (be careful in production!)
     if app.environment != .production {

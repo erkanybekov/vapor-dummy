@@ -6,6 +6,7 @@ final class DIContainer {
     static func configure(app: Application) throws {
         // Register database-dependent services
         app.userRepository = UserRepository(database: app.db)
+        app.todoRepository = TodoRepository(database: app.db)
         
         // Register services
         let passwordHasher = BCryptPasswordHasher()
@@ -16,6 +17,10 @@ final class DIContainer {
             userRepository: app.userRepository!,
             passwordHasher: passwordHasher,
             tokenService: tokenService
+        )
+        
+        app.todoUseCase = TodoUseCase(
+            todoRepository: app.todoRepository!
         )
     }
 }

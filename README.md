@@ -1,53 +1,170 @@
-# Vapor Authentication API
+# 🚀 Vapor Auth API
 
-A production-ready authentication API built with Swift Vapor framework, featuring JWT-based authentication, PostgreSQL database integration, and clean architecture patterns.
+Чистый, профессиональный Vapor backend с JWT аутентификацией.
 
-## 🚀 Features
-
-- **JWT Authentication**: Secure token-based authentication with access and refresh tokens
-- **User Management**: Registration, login, and user profile management
-- **Clean Architecture**: Domain-driven design with separation of concerns
-- **PostgreSQL Integration**: Robust database with migrations
-- **Docker Support**: Containerized deployment ready
-- **Dependency Injection**: Modular and testable code structure
-- **Swift Concurrency**: Fully async/await implementation
-
-## 📋 Prerequisites
-
-- Swift 5.9 or later
-- PostgreSQL 14 or later (or use Docker)
-- macOS 13+ or Linux
-
-## 🛠️ Installation & Setup
-
-### 1. Clone the Repository
+## ⚡ Быстрый Старт
 
 ```bash
-git clone <repository-url>
-cd vapor-dummy
+# 1. Запустить PostgreSQL
+docker-compose up -d
+
+# 2. Запустить приложение  
+swift run
 ```
 
-### 2. Install Dependencies
+## 🔒 Middleware - Что Это?
 
-The project uses Swift Package Manager (SPM) for dependency management. Dependencies are defined in `Package.swift`.
+**Middleware** = промежуточный слой между запросом и ответом.
 
-```bash
-swift package resolve
+```swift
+Request → Middleware → Controller → Response
 ```
 
-### 3. Environment Configuration
+**Зачем нужен:**
+- **Аутентификация** - проверяет токены
+- **Авторизация** - проверяет права доступа  
+- **Логирование** - записывает запросы
+- **Валидация** - проверяет данные
 
-Copy the example environment file and configure it:
-
-```bash
-cp .env.example .env
+### Наш AuthMiddleware:
+```swift
+// JWTBearerAuthenticator - проверяет JWT токен
+// UserAuthenticator - требует авторизованного пользователя
 ```
 
-Edit `.env` with your configuration:
+## 🛣️ AuthController - Как Добавить Routes
 
-```env
-DATABASE_HOST=localhost
-DATABASE_PORT=5432
+### Текущие маршруты:
+```swift
+POST /api/v1/auth/login     // Вход
+POST /api/v1/auth/register  // Регистрация  
+POST /api/v1/auth/refresh   // Обновить токен
+POST /api/v1/auth/logout    // Выход (защищён)
+GET  /api/v1/auth/me        // Текущий пользователь (защищён)
+```
+
+### Добавить новый маршрут:
+
+**1. В AuthController добавить функцию:**
+```swift
+func newEndpoint(_ req: Request) async throws -> SomeResponse {
+    // Ваша логика
+}
+```
+
+**2. В boot() зарегистрировать:**
+```swift
+// Публичный маршрут
+auth.post("new-endpoint", use: newEndpoint)
+
+// Защищённый маршрут  
+protected.get("protected-endpoint", use: newEndpoint)
+```
+
+### Структура проекта:
+```
+Sources/hello/
+├── Domain/           # Бизнес-логика
+├── Infrastructure/   # DB, Services
+└── Presentation/     # API слой
+    ├── Controllers/  # AuthController
+    ├── DTOs/        # Request/Response
+    └── Middleware/  # Аутентификация
+```
+
+## 📡 API Endpoints
+
+### 🔐 Authentication
+```
+POST /api/v1/auth/register    # Регистрация
+POST /api/v1/auth/login       # Вход  
+POST /api/v1/auth/refresh     # Обновить токен
+POST /api/v1/auth/logout      # Выход (защищён)
+GET  /api/v1/auth/me          # Текущий пользователь (защищён)
+```
+
+### ✅ Todo CRUD
+
+**Все Todo endpoints требуют авторизации (Bearer Token)**
+
+#### Получить все задачи
+```http
+GET /api/v1/todos
+Authorization: Bearer <access_token>
+```
+
+**Response:**
+```json
+{
+  "todos": [
+    {
+      "id": "uuid",
+      "title": "Изучить Vapor",
+      "description": "Создать API с чистой архитектурой",
+      "completed": false,
+      "createdAt": "2025-01-17T01:00:00Z",
+      "updatedAt": "2025-01-17T01:00:00Z"
+    }
+  ],
+  "count": 1
+}
+```
+
+#### Создать задачу
+```http
+POST /api/v1/todos
+Authorization: Bearer <access_token>
+Content-Type: application/json
+
+{
+  "title": "Новая задача",
+  "description": "Описание задачи (опционально)"
+}
+```
+
+#### Получить задачу по ID
+```http
+GET /api/v1/todos/{id}
+Authorization: Bearer <access_token>
+```
+
+#### Обновить задачу
+```http
+PUT /api/v1/todos/{id}
+Authorization: Bearer <access_token>
+Content-Type: application/json
+
+{
+  "title": "Обновлённое название",
+  "description": "Новое описание",
+  "completed": true
+}
+```
+
+#### Переключить статус задачи
+```http
+PATCH /api/v1/todos/{id}/toggle
+Authorization: Bearer <access_token>
+```
+
+#### Удалить задачу
+```http
+DELETE /api/v1/todos/{id}
+Authorization: Bearer <access_token>
+```
+
+### 💡 Особенности Todo API
+
+- **Безопасность**: Все Todo принадлежат конкретному пользователю
+- **Валидация**: Заголовок max 200 символов, описание max 1000
+- **Сортировка**: Задачи возвращаются по дате создания (новые первые)
+- **Ошибки**: 400/401/403/404 с понятными сообщениями
+
+### 🔍 Health Check
+```http
+GET /api/v1/health    # Статус API и БД
+GET /api/v1/          # Приветствие API
+```
 DATABASE_USERNAME=vapor_username
 DATABASE_PASSWORD=vapor_password
 DATABASE_NAME=vapor_database
