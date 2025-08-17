@@ -1,3 +1,10 @@
+databases:
+  - name: vapor-todo-db
+    databaseName: vapor_database
+    user: vapor_user
+    plan: free
+    region: oregon
+
 services:
   # Vapor Todo API Service
   - type: web
@@ -9,8 +16,6 @@ services:
     dockerfilePath: ./Dockerfile
     healthCheckPath: /api/v1/health
     envVars:
-      - key: CORS_ALLOWED_ORIGINS
-        value: https://your-frontend.com
       - key: DATABASE_HOST
         fromDatabase:
           name: vapor-todo-db
@@ -39,10 +44,3 @@ services:
         value: vapor-todo-users
       - key: CORS_ALLOWED_ORIGINS
         value: https://your-frontend.com,https://admin.your-domain.com
-
-databases:
-  - name: vapor-todo-db
-    databaseName: vapor_database
-    user: vapor_user
-    plan: free
-    region: oregon
