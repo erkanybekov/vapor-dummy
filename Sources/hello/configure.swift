@@ -40,7 +40,7 @@ public func configure(_ app: Application) async throws {
     
     // CORS middleware for API access
     let corsConfiguration = CORSMiddleware.Configuration(
-        allowedOrigin: .all,
+        allowedOrigin: getAllowedOrigins(for: app.environment),
         allowedMethods: [.GET, .POST, .PUT, .OPTIONS, .DELETE, .PATCH],
         allowedHeaders: [.accept, .authorization, .contentType, .origin, .xRequestedWith, .userAgent, .accessControlAllowOrigin]
     )
@@ -87,6 +87,29 @@ private func generateKeysIfNeeded(privateKeyPath: String, publicKeyPath: String)
         } catch {
             print("❌ Failed to generate keys: \(error)")
         }
+    }
+}
+
+// MARK: - CORS Configuration
+private func getAllowedOrigins(for environment: Environment) -> CORSMiddleware.AllowOriginSetting {
+    switch environment {
+    case .development, .testing:
+        // Development: Allow localhost and common dev ports
+        return .originBased
+    case .production:
+        // Production: Whitelist specific domains
+        let allowedDomains = Environment.get("CORS_ALLOWED_ORIGINS")?
+            .split(separator: ",")
+            .map { $0.trimmingCharacters(in: .whitespaces) } ?? []
+        
+        if allowedDomains.isEmpty {
+            // Fallback: Allow only HTTPS origins (more secure than .all)
+            return .custom("https://your-frontend-domain.com")
+        }
+        
+        return .any(allowedDomains)
+    default:
+        return .none
     }
 }
 

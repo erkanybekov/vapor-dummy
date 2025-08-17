@@ -165,6 +165,24 @@ Authorization: Bearer <access_token>
 GET /api/v1/health    # Статус API и БД
 GET /api/v1/          # Приветствие API
 ```
+
+## 🔒 CORS Configuration
+
+API использует безопасную конфигурацию CORS:
+
+### Development
+- Разрешены localhost и dev порты
+
+### Production  
+- **Whitelist конкретных доменов** через `CORS_ALLOWED_ORIGINS`
+- Формат: `https://domain1.com,https://domain2.com`
+- Fallback: только HTTPS соединения
+
+### Security Features
+- ❌ Никаких wildcard `*` origins
+- ✅ Только HTTPS в production
+- ✅ Строгий whitelist доменов
+- ✅ Защита от CSRF атак
 DATABASE_USERNAME=vapor_username
 DATABASE_PASSWORD=vapor_password
 DATABASE_NAME=vapor_database
