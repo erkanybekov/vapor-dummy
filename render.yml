@@ -4,6 +4,8 @@ services:
     name: vapor-todo-api
     env: docker
     plan: free
+    region: oregon
+    branch: main
     dockerfilePath: ./Dockerfile
     buildCommand: swift build --configuration release
     startCommand: ./.build/release/hello serve --env production --hostname 0.0.0.0 --port $PORT
@@ -41,3 +43,4 @@ databases:
     databaseName: vapor_database
     user: vapor_user
     plan: free
+    region: oregon
