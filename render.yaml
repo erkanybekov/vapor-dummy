@@ -20,6 +20,26 @@ services:
         fromDatabase:
           name: vapor-todo-db
           property: connectionString
+      - key: DATABASE_HOST
+        fromDatabase:
+          name: vapor-todo-db
+          property: host
+      - key: DATABASE_PORT
+        fromDatabase:
+          name: vapor-todo-db
+          property: port
+      - key: DATABASE_NAME
+        fromDatabase:
+          name: vapor-todo-db
+          property: database
+      - key: DATABASE_USERNAME
+        fromDatabase:
+          name: vapor-todo-db
+          property: user
+      - key: DATABASE_PASSWORD
+        fromDatabase:
+          name: vapor-todo-db
+          property: password
       - key: JWT_SECRET
         generateValue: true
       - key: JWT_ISSUER

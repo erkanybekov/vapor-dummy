@@ -7,22 +7,28 @@ import JWT
 public func configure(_ app: Application) async throws {
     // MARK: - Database Configuration
     // Debug environment variables
+    print("🔍 Environment: \(app.environment)")
     print("🔍 DATABASE_URL: \(Environment.get("DATABASE_URL") ?? "NOT SET")")
+    print("🔍 DATABASE_HOST: \(Environment.get("DATABASE_HOST") ?? "NOT SET")")
+    print("🔍 DATABASE_PORT: \(Environment.get("DATABASE_PORT") ?? "NOT SET")")
+    print("🔍 DATABASE_NAME: \(Environment.get("DATABASE_NAME") ?? "NOT SET")")
+    print("🔍 DATABASE_USERNAME: \(Environment.get("DATABASE_USERNAME") ?? "NOT SET")")
     
-    // Configure PostgreSQL database using connection string
-    if let databaseURL = Environment.get("DATABASE_URL") {
+    // Try DATABASE_URL first (Render's preferred method)
+    if let databaseURL = Environment.get("DATABASE_URL"), !databaseURL.isEmpty {
         print("🔍 Using DATABASE_URL: \(databaseURL)")
         try app.databases.use(.postgres(url: databaseURL), as: .psql)
-    } else {
-        // Fallback to individual environment variables for local development
-        print("🔍 Using fallback individual env vars for local development")
-        let dbHost = Environment.get("DATABASE_HOST") ?? "localhost"
+    } 
+    // Try individual environment variables (fallback for Render)
+    else if let dbHost = Environment.get("DATABASE_HOST"),
+            !dbHost.isEmpty,
+            dbHost != "localhost" {
         let dbPort = Environment.get("DATABASE_PORT").flatMap(Int.init(_:)) ?? 5432
-        let dbUsername = Environment.get("DATABASE_USERNAME") ?? "vapor_username"
-        let dbPassword = Environment.get("DATABASE_PASSWORD") ?? "vapor_password"
+        let dbUsername = Environment.get("DATABASE_USERNAME") ?? "vapor_user"
+        let dbPassword = Environment.get("DATABASE_PASSWORD") ?? ""
         let dbName = Environment.get("DATABASE_NAME") ?? "vapor_database"
         
-        print("🔍 Fallback config: \(dbHost):\(dbPort) db=\(dbName) user=\(dbUsername)")
+        print("🔍 Using individual env vars: \(dbHost):\(dbPort) db=\(dbName) user=\(dbUsername)")
         
         app.databases.use(
             .postgres(
@@ -37,6 +43,35 @@ public func configure(_ app: Application) async throws {
             ),
             as: .psql
         )
+    }
+    // Local development fallback
+    else if app.environment == .development {
+        print("⚠️ No database configuration found, using local development defaults")
+        let dbHost = "localhost"
+        let dbPort = 5432
+        let dbUsername = "vapor_username"
+        let dbPassword = "vapor_password"
+        let dbName = "vapor_database"
+        
+        print("🔍 Local dev config: \(dbHost):\(dbPort) db=\(dbName) user=\(dbUsername)")
+        
+        app.databases.use(
+            .postgres(
+                configuration: .init(
+                    hostname: dbHost,
+                    port: dbPort,
+                    username: dbUsername,
+                    password: dbPassword,
+                    database: dbName,
+                    tls: .disable
+                )
+            ),
+            as: .psql
+        )
+    }
+    // Production without database config should fail
+    else {
+        fatalError("❌ CRITICAL: No database configuration found in production! Please set DATABASE_URL or individual database environment variables.")
     }
     
     // MARK: - JWT Configuration
