@@ -6,20 +6,38 @@ import JWT
 // configures your application
 public func configure(_ app: Application) async throws {
     // MARK: - Database Configuration
-    // Configure PostgreSQL database
-    app.databases.use(
-        .postgres(
-            configuration: .init(
-                hostname: Environment.get("DATABASE_HOST") ?? "localhost",
-                port: Environment.get("DATABASE_PORT").flatMap(Int.init(_:)) ?? 5432,
-                username: Environment.get("DATABASE_USERNAME") ?? "vapor_username",
-                password: Environment.get("DATABASE_PASSWORD") ?? "vapor_password",
-                database: Environment.get("DATABASE_NAME") ?? "vapor_database",
-                tls: .disable
-            )
-        ),
-        as: .psql
-    )
+    // Debug environment variables
+    print("🔍 DATABASE_URL: \(Environment.get("DATABASE_URL") ?? "NOT SET")")
+    
+    // Configure PostgreSQL database using connection string
+    if let databaseURL = Environment.get("DATABASE_URL") {
+        print("🔍 Using DATABASE_URL: \(databaseURL)")
+        try app.databases.use(.postgres(url: databaseURL), as: .psql)
+    } else {
+        // Fallback to individual environment variables for local development
+        print("🔍 Using fallback individual env vars for local development")
+        let dbHost = Environment.get("DATABASE_HOST") ?? "localhost"
+        let dbPort = Environment.get("DATABASE_PORT").flatMap(Int.init(_:)) ?? 5432
+        let dbUsername = Environment.get("DATABASE_USERNAME") ?? "vapor_username"
+        let dbPassword = Environment.get("DATABASE_PASSWORD") ?? "vapor_password"
+        let dbName = Environment.get("DATABASE_NAME") ?? "vapor_database"
+        
+        print("🔍 Fallback config: \(dbHost):\(dbPort) db=\(dbName) user=\(dbUsername)")
+        
+        app.databases.use(
+            .postgres(
+                configuration: .init(
+                    hostname: dbHost,
+                    port: dbPort,
+                    username: dbUsername,
+                    password: dbPassword,
+                    database: dbName,
+                    tls: .disable
+                )
+            ),
+            as: .psql
+        )
+    }
     
     // MARK: - JWT Configuration
     try await configureJWT(app)
