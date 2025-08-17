@@ -7,10 +7,10 @@ services:
     region: oregon
     branch: main
     dockerfilePath: ./Dockerfile
-    buildCommand: swift build --configuration release
-    startCommand: ./.build/release/hello serve --env production --hostname 0.0.0.0 --port $PORT
     healthCheckPath: /api/v1/health
     envVars:
+      - key: CORS_ALLOWED_ORIGINS
+        value: https://your-frontend.com
       - key: DATABASE_HOST
         fromDatabase:
           name: vapor-todo-db
