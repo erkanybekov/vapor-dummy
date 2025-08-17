@@ -15,7 +15,7 @@ final class TodoController: RouteCollection, Sendable {
         // Protected routes - require authentication
         let protected = todos.grouped(JWTBearerAuthenticator(), UserAuthenticator())
         
-        protected.get(use: getAllTodos)              // GET /todos
+        protected.get(use: getAllTodos)              // GET /todos (with optional pagination)
         protected.post(use: createTodo)              // POST /todos
         protected.get(":id", use: getTodo)           // GET /todos/:id
         protected.put(":id", use: updateTodo)        // PUT /todos/:id
@@ -25,14 +25,34 @@ final class TodoController: RouteCollection, Sendable {
     
     // MARK: - CRUD Endpoints
     
-    func getAllTodos(_ req: Request) async throws -> TodoListResponse {
+    func getAllTodos(_ req: Request) async throws -> Response {
         let user = try req.auth.require(User.self)
         guard let userId = user.id else {
             throw Abort(.unauthorized, reason: "User ID not found")
         }
         
-        let todos = try await todoUseCase.getTodos(for: userId)
-        return TodoListResponse(todos: todos)
+        // Check for pagination parameters
+        let pageStr: String? = req.query["page"]
+        let limitStr: String? = req.query["limit"]
+        let page = Int(pageStr ?? "1") ?? 1
+        let limit = Int(limitStr ?? "20") ?? 20
+        
+        // If pagination parameters provided, use paginated response
+        if pageStr != nil || limitStr != nil {
+            let result = try await todoUseCase.getTodosPaginated(for: userId, page: page, limit: limit)
+            let response = PaginatedTodoResponse(
+                todos: result.todos,
+                page: max(1, page),
+                limit: min(max(1, limit), 100),
+                total: result.total
+            )
+            return try await response.encodeResponse(for: req)
+        } else {
+            // Default: return all todos (backward compatibility)
+            let todos = try await todoUseCase.getTodos(for: userId)
+            let response = TodoListResponse(todos: todos)
+            return try await response.encodeResponse(for: req)
+        }
     }
     
     func createTodo(_ req: Request) async throws -> TodoResponse {

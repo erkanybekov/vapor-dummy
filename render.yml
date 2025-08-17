@@ -1,0 +1,46 @@
+services:
+  # Vapor Todo API Service
+  - type: web
+    name: vapor-todo-api
+    env: docker
+    plan: free
+    region: oregon
+    branch: main
+    dockerfilePath: ./Dockerfile
+    buildCommand: swift build --configuration release
+    startCommand: ./.build/release/hello serve --env production --hostname 0.0.0.0 --port $PORT
+    healthCheckPath: /api/v1/health
+    envVars:
+      - key: DATABASE_HOST
+        fromDatabase:
+          name: vapor-todo-db
+          property: host
+      - key: DATABASE_PORT
+        fromDatabase:
+          name: vapor-todo-db
+          property: port
+      - key: DATABASE_USERNAME
+        fromDatabase:
+          name: vapor-todo-db
+          property: user
+      - key: DATABASE_PASSWORD
+        fromDatabase:
+          name: vapor-todo-db
+          property: password
+      - key: DATABASE_NAME
+        fromDatabase:
+          name: vapor-todo-db
+          property: database
+      - key: JWT_SECRET
+        generateValue: true
+      - key: JWT_ISSUER
+        value: vapor-todo-api
+      - key: JWT_AUDIENCE
+        value: vapor-todo-users
+
+databases:
+  - name: vapor-todo-db
+    databaseName: vapor_database
+    user: vapor_user
+    plan: free
+    region: oregon

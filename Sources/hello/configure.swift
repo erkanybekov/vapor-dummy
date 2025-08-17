@@ -29,10 +29,10 @@ public func configure(_ app: Application) async throws {
     app.migrations.add(CreateRevokedToken())
     app.migrations.add(CreateTodo())
     
-    // Run migrations automatically (be careful in production!)
-    if app.environment != .production {
-        try await app.autoMigrate()
-    }
+    // Run migrations automatically
+    // For initial deployment, we'll run migrations in production too
+    // In a real app, you'd want a separate migration command
+    try await app.autoMigrate()
     
     // MARK: - Middleware
     // Enable file serving from /Public folder

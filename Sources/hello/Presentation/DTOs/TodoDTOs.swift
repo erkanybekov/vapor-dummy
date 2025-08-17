@@ -43,3 +43,25 @@ struct TodoListResponse: Content {
         self.count = todos.count
     }
 }
+
+struct PaginatedTodoResponse: Content {
+    let todos: [TodoResponse]
+    let pagination: PaginationMeta
+    
+    init(todos: [Todo], page: Int, limit: Int, total: Int) {
+        self.todos = todos.map { TodoResponse(from: $0) }
+        self.pagination = PaginationMeta(
+            page: page,
+            limit: limit,
+            total: total,
+            totalPages: (total + limit - 1) / limit
+        )
+    }
+}
+
+struct PaginationMeta: Content {
+    let page: Int
+    let limit: Int
+    let total: Int
+    let totalPages: Int
+}

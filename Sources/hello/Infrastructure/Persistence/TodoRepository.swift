@@ -67,6 +67,8 @@ protocol TodoRepositoryProtocol: Sendable {
     func create(_ todo: Todo) async throws -> Todo
     func find(by id: UUID) async throws -> Todo?
     func findAll(for userId: UUID) async throws -> [Todo]
+    func findPaginated(for userId: UUID, page: Int, limit: Int) async throws -> [Todo]
+    func count(for userId: UUID) async throws -> Int
     func update(_ todo: Todo) async throws -> Todo
     func delete(by id: UUID) async throws
 }
@@ -107,6 +109,27 @@ final class TodoRepository: TodoRepositoryProtocol {
             .all()
         
         return todoModels.map { $0.toDomain() }
+    }
+    
+    func findPaginated(for userId: UUID, page: Int, limit: Int) async throws -> [Todo] {
+        let offset = (page - 1) * limit
+        
+        let todoModels = try await TodoModel
+            .query(on: database)
+            .filter(\.$user.$id == userId)
+            .sort(\.$createdAt, .descending)
+            .offset(offset)
+            .limit(limit)
+            .all()
+        
+        return todoModels.map { $0.toDomain() }
+    }
+    
+    func count(for userId: UUID) async throws -> Int {
+        return try await TodoModel
+            .query(on: database)
+            .filter(\.$user.$id == userId)
+            .count()
     }
     
     func update(_ todo: Todo) async throws -> Todo {
