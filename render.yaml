@@ -1,3 +1,9 @@
+databases:
+  - name: vapor-todo-db
+    databaseName: vapor_database_147o
+    plan: free
+    region: oregon
+
 services:
   - type: web
     name: vapor-todo-api
@@ -23,9 +29,3 @@ services:
           property: password
       - key: CORS_ALLOWED_ORIGINS
         value: https://your-frontend.com,https://admin.your-domain.com
-
-databases:
-  - name: vapor-todo-db
-    databaseName: vapor_database
-    plan: free
-    region: oregon

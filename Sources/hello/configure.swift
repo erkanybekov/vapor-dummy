@@ -76,18 +76,9 @@ public func configure(_ app: Application) async throws {
             as: .psql
         )
     }
-    // Production without database config - temporarily bypass to debug
+    // Production without database config should fail
     else {
-        print("❌ CRITICAL: No database configuration found in production!")
-        print("🔍 DEBUGGING: All environment variables:")
-        ProcessInfo.processInfo.environment.sorted { $0.key < $1.key }.forEach { key, value in
-            print("  \(key): \(value)")
-        }
-        
-        // Temporary fallback to prevent crash - REMOVE AFTER DEBUGGING
-        print("⚠️ TEMPORARY: Using fallback database config for debugging")
-        let fallbackURL = "postgresql://vapor_user:vapor_password@localhost:5432/vapor_database"
-        try app.databases.use(.postgres(url: fallbackURL), as: .psql)
+        fatalError("❌ CRITICAL: No database configuration found in production! Please ensure the database service 'vapor-todo-db' exists in your Render dashboard and is linked to this web service.")
     }
     
     // MARK: - JWT Configuration
