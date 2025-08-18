@@ -1,12 +1,12 @@
 databases:
-  - name: vapor-todo-db
-    databaseName: vapor_database_147o
+  - name: vapor-db-fresh
+    databaseName: vapor_database
     plan: free
     region: oregon
 
 services:
   - type: web
-    name: vapor-todo-api
+    name: vapor-api-fresh
     env: docker
     dockerfilePath: ./Dockerfile
     plan: free
@@ -17,15 +17,13 @@ services:
         generateValue: true
       - key: DATABASE_URL
         fromDatabase:
-          name: vapor-todo-db
+          name: vapor-db-fresh
           property: connectionString
       - key: DATABASE_USER
         fromDatabase:
-          name: vapor-todo-db
+          name: vapor-db-fresh
           property: user
       - key: DATABASE_PASSWORD
         fromDatabase:
-          name: vapor-todo-db
+          name: vapor-db-fresh
           property: password
-      - key: CORS_ALLOWED_ORIGINS
-        value: https://your-frontend.com,https://admin.your-domain.com
