@@ -135,6 +135,13 @@ public func configure(_ app: Application) async throws {
     // Error handling middleware
     app.middleware.use(ErrorMiddleware.default(environment: app.environment))
     
+    // MARK: - JSON Encoder Configuration
+    // Configure JSON encoder for consistent key ordering
+    let encoder = JSONEncoder()
+    encoder.outputFormatting = [.sortedKeys, .prettyPrinted]
+    encoder.dateEncodingStrategy = .iso8601
+    ContentConfiguration.global.use(encoder: encoder, for: .json)
+    
     // MARK: - Dependency Injection
     try DIContainer.configure(app: app)
     
