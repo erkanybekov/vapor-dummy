@@ -4,6 +4,7 @@ databases:
     user: vapor_user
     plan: free
     region: oregon
+    postgresMajorVersion: 15
 
 services:
   # Vapor Todo API Service

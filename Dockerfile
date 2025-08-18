@@ -58,7 +58,15 @@ RUN export DEBIAN_FRONTEND=noninteractive DEBCONF_NONINTERACTIVE_SEEN=true \
       libxml2 \
       libssl3 \
       libpq5 \
+      gosu \
     && rm -r /var/lib/apt/lists/*
+
+# gosu is a lightweight alternative to sudo, used for changing users.
+# We will use it to run our app as the non-root 'vapor' user.
+# In some systems, su-exec is used, but gosu is more common in official images.
+RUN set -eux; \
+	apt-get install -y --no-install-recommends gosu; \
+	rm -rf /var/lib/apt/lists/*;
 
 # Create a vapor user and group with /app as its home directory
 RUN useradd --user-group --create-home --system --skel /dev/null --home-dir /app vapor
@@ -69,12 +77,10 @@ WORKDIR /app
 # Copy built executable and any staged resources from builder
 COPY --from=build --chown=vapor:vapor /staging /app
 
-# Ensure all further commands run as the vapor user
-USER vapor:vapor
-
 # Let Docker bind to port 10000 (Render's default)
 EXPOSE 10000
 
 # Start the Vapor service when the image is run
-ENTRYPOINT ["./hello"]
+# Use gosu to drop privileges to the vapor user
+ENTRYPOINT ["gosu", "vapor:vapor", "./hello"]
 CMD ["serve", "--env", "production", "--hostname", "0.0.0.0", "--port", "10000"]
