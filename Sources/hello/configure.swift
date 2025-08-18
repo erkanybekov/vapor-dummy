@@ -37,6 +37,10 @@ public func configure(_ app: Application) async throws {
         
         let port = url.port ?? 5432
         
+        // Configure SSL for Render (required)
+        var tlsConfig = TLSConfiguration.makeClientConfiguration()
+        tlsConfig.certificateVerification = .none  // Skip cert verification for managed DB
+        
         app.databases.use(.postgres(
             configuration: .init(
                 hostname: host,
@@ -44,7 +48,7 @@ public func configure(_ app: Application) async throws {
                 username: user,
                 password: password,
                 database: database,
-                tls: .disable
+                tls: .require(try NIOSSLContext(configuration: tlsConfig))
             )
         ), as: .psql)
     } 
