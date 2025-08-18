@@ -2,6 +2,7 @@ import Vapor
 import Fluent
 import FluentPostgresDriver
 import JWT
+import NIOSSL
 
 // configures your application
 public func configure(_ app: Application) async throws {
@@ -24,7 +25,28 @@ public func configure(_ app: Application) async throws {
     // Try DATABASE_URL first (Render's preferred method)
     if let databaseURL = Environment.get("DATABASE_URL") ?? Environment.get("POSTGRES_URL"), !databaseURL.isEmpty {
         print("🔍 Using DATABASE_URL: \(databaseURL)")
-        try app.databases.use(.postgres(url: databaseURL), as: .psql)
+        
+        // Parse URL components for TLS configuration
+        guard let url = URL(string: databaseURL),
+              let host = url.host,
+              let user = url.user,
+              let password = url.password,
+              let database = url.path.dropFirst().description.isEmpty ? nil : String(url.path.dropFirst()) else {
+            fatalError("Invalid DATABASE_URL format")
+        }
+        
+        let port = url.port ?? 5432
+        
+        app.databases.use(.postgres(
+            configuration: .init(
+                hostname: host,
+                port: port,
+                username: user,
+                password: password,
+                database: database,
+                tls: .disable
+            )
+        ), as: .psql)
     } 
     // Try individual environment variables (fallback for Render)
     else if let dbHost = Environment.get("DATABASE_HOST"),
