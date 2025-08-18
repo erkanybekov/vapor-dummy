@@ -22,7 +22,7 @@ public func configure(_ app: Application) async throws {
     print("🔍 DATABASE_PASSWORD: \(Environment.get("DATABASE_PASSWORD")?.count ?? 0) chars")
     
     // Try DATABASE_URL first (Render's preferred method)
-    if let databaseURL = Environment.get("DATABASE_URL"), !databaseURL.isEmpty {
+    if let databaseURL = Environment.get("DATABASE_URL") ?? Environment.get("POSTGRES_URL"), !databaseURL.isEmpty {
         print("🔍 Using DATABASE_URL: \(databaseURL)")
         try app.databases.use(.postgres(url: databaseURL), as: .psql)
     } 
@@ -31,7 +31,7 @@ public func configure(_ app: Application) async throws {
             !dbHost.isEmpty,
             dbHost != "localhost" {
         let dbPort = Environment.get("DATABASE_PORT").flatMap(Int.init(_:)) ?? 5432
-        let dbUsername = Environment.get("DATABASE_USERNAME") ?? "vapor_user"
+        let dbUsername = Environment.get("DATABASE_USER") ?? Environment.get("DATABASE_USERNAME") ?? "vapor_user"
         let dbPassword = Environment.get("DATABASE_PASSWORD") ?? ""
         let dbName = Environment.get("DATABASE_NAME") ?? "vapor_database"
         

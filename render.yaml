@@ -1,39 +1,19 @@
-databases:
-  - name: vapor-todo-db
-    databaseName: vapor_database
-    user: vapor_user
-    plan: free
-    region: oregon
-    postgresMajorVersion: 15
-
 services:
-  # Vapor Todo API Service
   - type: web
     name: vapor-todo-api
     env: docker
+    dockerfilePath: ./Dockerfile
     plan: free
     region: oregon
     branch: main
-    dockerfilePath: ./Dockerfile
-    healthCheckPath: /api/v1/health
     envVars:
+      - key: JWT_SECRET
+        generateValue: true
       - key: DATABASE_URL
         fromDatabase:
           name: vapor-todo-db
           property: connectionString
-      - key: DATABASE_HOST
-        fromDatabase:
-          name: vapor-todo-db
-          property: host
-      - key: DATABASE_PORT
-        fromDatabase:
-          name: vapor-todo-db
-          property: port
-      - key: DATABASE_NAME
-        fromDatabase:
-          name: vapor-todo-db
-          property: database
-      - key: DATABASE_USERNAME
+      - key: DATABASE_USER
         fromDatabase:
           name: vapor-todo-db
           property: user
@@ -41,11 +21,11 @@ services:
         fromDatabase:
           name: vapor-todo-db
           property: password
-      - key: JWT_SECRET
-        generateValue: true
-      - key: JWT_ISSUER
-        value: vapor-todo-api
-      - key: JWT_AUDIENCE
-        value: vapor-todo-users
       - key: CORS_ALLOWED_ORIGINS
         value: https://your-frontend.com,https://admin.your-domain.com
+
+databases:
+  - name: vapor-todo-db
+    databaseName: vapor_database
+    plan: free
+    region: oregon
