@@ -31,14 +31,7 @@ final class CallController: RouteCollection, Sendable {
     func boot(routes: any RoutesBuilder) throws {
         let calls = routes.grouped("calls")
 
-        // Browsers cannot set headers on a WebSocket, so the access token may also
-        // come as ?token=. Native clients should send the Authorization header.
-        calls.webSocket(
-            "ws",
-            maxFrameSize: .init(integerLiteral: Self.maxFrameSize),
-            shouldUpgrade: authenticateUpgrade,
-            onUpgrade: runSession
-        )
+        calls.get("ws", use: upgrade)
 
         let protected = calls.grouped(JWTBearerAuthenticator(), UserAuthenticator())
         protected.get("ice-servers", use: getIceServers)
@@ -47,7 +40,12 @@ final class CallController: RouteCollection, Sendable {
 
     // MARK: - WebSocket
 
-    func authenticateUpgrade(_ req: Request) async throws -> HTTPHeaders? {
+    /// Authenticates before upgrading, so a bad token gets a real `401` response.
+    /// (A failing `shouldUpgrade` makes Vapor drop the TCP connection instead,
+    /// which clients cannot tell apart from a network error.)
+    func upgrade(_ req: Request) async throws -> Response {
+        // Browsers cannot set headers on a WebSocket, so the access token may also
+        // come as ?token=. Native clients should send the Authorization header.
         guard let token = req.headers.bearerAuthorization?.token ?? req.query[String.self, at: "token"] else {
             throw Abort(.unauthorized, reason: "Missing access token")
         }
@@ -59,7 +57,7 @@ final class CallController: RouteCollection, Sendable {
             throw Abort(.unauthorized, reason: "Invalid access token")
         }
         req.auth.login(user)
-        return [:]
+        return req.webSocket(maxFrameSize: .init(integerLiteral: Self.maxFrameSize), onUpgrade: runSession)
     }
 
     func runSession(_ req: Request, _ ws: WebSocket) async {
