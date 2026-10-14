@@ -7,25 +7,11 @@ import NIOSSL
 // configures your application
 public func configure(_ app: Application) async throws {
     // MARK: - Database Configuration
-    // Debug environment variables
+    // Never log credentials: logs end up in the hosting dashboard.
     print("🔍 Environment: \(app.environment)")
-    print("🔍 All environment variables:")
-    ProcessInfo.processInfo.environment.forEach { key, value in
-        if key.contains("DATABASE") || key.contains("POSTGRES") {
-            print("  \(key): \(value)")
-        }
-    }
-    print("🔍 DATABASE_URL: \(Environment.get("DATABASE_URL") ?? "NOT SET")")
-    print("🔍 DATABASE_HOST: \(Environment.get("DATABASE_HOST") ?? "NOT SET")")
-    print("🔍 DATABASE_PORT: \(Environment.get("DATABASE_PORT") ?? "NOT SET")")
-    print("🔍 DATABASE_NAME: \(Environment.get("DATABASE_NAME") ?? "NOT SET")")
-    print("🔍 DATABASE_USERNAME: \(Environment.get("DATABASE_USERNAME") ?? "NOT SET")")
-    print("🔍 DATABASE_PASSWORD: \(Environment.get("DATABASE_PASSWORD")?.count ?? 0) chars")
     
     // Try DATABASE_URL first (Render's preferred method)
     if let databaseURL = Environment.get("DATABASE_URL") ?? Environment.get("POSTGRES_URL"), !databaseURL.isEmpty {
-        print("🔍 Using DATABASE_URL: \(databaseURL)")
-        
         // Parse URL components for TLS configuration
         guard let url = URL(string: databaseURL),
               let host = url.host,
@@ -36,6 +22,7 @@ public func configure(_ app: Application) async throws {
         }
         
         let port = url.port ?? 5432
+        print("🔍 Using DATABASE_URL: \(host):\(port)/\(database) user=\(user)")
         
         // Configure SSL for Render (required)
         var tlsConfig = TLSConfiguration.makeClientConfiguration()
