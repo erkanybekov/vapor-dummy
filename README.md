@@ -166,6 +166,98 @@ GET /api/v1/health    # Статус API и БД
 GET /api/v1/          # Приветствие API
 ```
 
+## 📹 Видеозвонки (WebRTC)
+
+Свой FaceTime: звонок пользователю по email, а звонок **на свой же email** звонит на твои другие устройства.
+
+### Как это устроено
+
+```
+ iPhone ──┐  WebSocket (JSON)   ┌──────────────┐   WebSocket   ┌── Mac
+          ├───── сигналинг ────▶│ Vapor CallHub │◀──────────────┤
+          │                     └──────────────┘               │
+          └════════ аудио/видео P2P (WebRTC, SRTP) ════════════┘
+                     (через TURN, если P2P невозможен)
+```
+
+- **Сервер не трогает медиа.** Он только знакомит устройства: кто онлайн, кому звонить, и пересылает SDP offer/answer + ICE-кандидаты. Видео идёт напрямую между устройствами.
+- **STUN** (`stun.l.google.com`) помогает узнать публичный адрес. **TURN** ретранслирует медиа, когда прямое соединение невозможно (мобильный интернет за CGNAT, строгий NAT). Без TURN часть звонков между разными сетями не соединится.
+- `CallHub` — actor со стейт-машиной звонка: `ringing → active → ended`. Всё состояние в памяти процесса → **один инстанс**. Для нескольких инстансов нужна общая шина (Redis pub/sub).
+
+### Надёжность
+
+| Ситуация | Что делает сервер |
+|---|---|
+| Несколько устройств у получателя | Звонит на все свободные; ответил один — остальные получают `answered_elsewhere` |
+| Никто не ответил | `timeout` через 30 с (`CALL_RING_TIMEOUT_SECONDS`) |
+| Сеть моргнула посреди звонка (Wi-Fi → LTE) | Ждёт переподключения 15 с (`CALL_RECONNECT_GRACE_SECONDS`), потом `call.resumed` → новая WebRTC-сессия |
+| Новый сокет с того же устройства | Старый закрывается, звонок продолжается на новом |
+| Сокет «завис» без FIN | WebSocket ping каждые 15 с; нет pong — сокет закрывается |
+| Флуд сообщениями | Token bucket на соединение (60 burst, 20/с) |
+| Порядок сигналов | Сообщения сокета обрабатываются строго по очереди (offer раньше кандидатов) |
+| БД медленная/упала | История пишется в фоне, сигналинг не ждёт БД |
+
+### Эндпоинты
+
+```
+GET /api/v1/calls/ws?token=<access>&deviceId=<id>&deviceName=<name>   # WebSocket
+GET /api/v1/calls/ice-servers    # STUN/TURN для RTCPeerConnection (Bearer)
+GET /api/v1/calls/history        # история звонков (Bearer), ?limit=50
+```
+
+Нативные клиенты могут передавать токен в `Authorization: Bearer`, браузер — только в `?token=`.
+`deviceId` — стабильный id устройства (на iOS — `identifierForVendor`): по нему сервер узнаёт переподключение и восстанавливает звонок.
+Клиент начинает слать сообщения только после `hello`. Код закрытия `4000` означает «вытеснен новым подключением этого же устройства», переподключаться не нужно.
+
+### Протокол (JSON по WebSocket)
+
+Клиент → сервер:
+```jsonc
+{"type":"call.invite","calleeEmail":"me@example.com","video":true}   // или calleeId
+{"type":"call.accept","callId":"…"}
+{"type":"call.decline","callId":"…"}
+{"type":"call.hangup","callId":"…"}
+{"type":"call.signal","callId":"…","signal":{"kind":"offer","sdp":"…"}}
+{"type":"call.signal","callId":"…","signal":{"kind":"candidate","candidate":{"candidate":"…","sdpMid":"0","sdpMLineIndex":0}}}
+{"type":"ping"}
+```
+
+Сервер → клиент: `hello` (ICE-серверы), `presence` (твои устройства онлайн), `call.ringing`, `call.incoming`,
+`call.accepted` (`role: caller` создаёт offer), `call.signal`, `call.reconnecting`, `call.resumed`, `call.ended` (`reason`), `error`, `pong`.
+
+Последовательность звонка:
+```
+Mac                      Server                    iPhone
+ │── call.invite ──────────▶│                          │
+ │◀── call.ringing ─────────│── call.incoming ────────▶│
+ │                          │◀───────── call.accept ───│
+ │◀── call.accepted(caller)─│── call.accepted(callee) ▶│
+ │── signal(offer) ────────▶│── signal(offer) ────────▶│
+ │◀── signal(answer) ───────│◀──────── signal(answer) ─│
+ │◀═══════════ ICE candidates в обе стороны ══════════▶│
+ │◀═══════════════ медиа P2P ═════════════════════════▶│
+```
+
+### Позвонить себе с другого устройства
+
+1. `swift run` и открыть `http://localhost:8080/call.html` на Mac, войти.
+2. Камера в браузере работает только по HTTPS (или на localhost), поэтому для телефона нужен туннель:
+   ```bash
+   cloudflared tunnel --url http://localhost:8080
+   ```
+3. Открыть выданный `https://….trycloudflare.com/call.html` на iPhone, войти **тем же** аккаунтом.
+4. В «Позвонить» оставить свой email → 📹 Видео. Телефон зазвонит.
+
+### TURN (для звонков между разными сетями)
+
+```bash
+# coturn: static-auth-secret=<секрет>, use-auth-secret
+TURN_URLS="turn:turn.example.com:3478?transport=udp,turns:turn.example.com:5349"
+TURN_SECRET="<тот же секрет>"            # сервер выдаёт временные креды (HMAC-SHA1)
+# или статичные креды у хостинг-провайдера TURN:
+TURN_USERNAME=…  TURN_CREDENTIAL=…
+```
+
 ## 🔒 CORS Configuration
 
 API использует безопасную конфигурацию CORS:

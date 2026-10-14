@@ -21,6 +21,18 @@ extension Application {
         typealias Value = TodoUseCase
     }
     
+    private struct CallRepositoryKey: StorageKey, Sendable {
+        typealias Value = any CallRepositoryProtocol
+    }
+    
+    private struct CallHubKey: StorageKey, Sendable {
+        typealias Value = CallHub
+    }
+    
+    private struct IceServerProviderKey: StorageKey, Sendable {
+        typealias Value = IceServerProvider
+    }
+    
     // MARK: Properties
     
     var authUseCase: AuthUseCase? {
@@ -41,5 +53,20 @@ extension Application {
     var todoUseCase: TodoUseCase? {
         get { storage[TodoUseCaseKey.self] }
         set { storage[TodoUseCaseKey.self] = newValue }
+    }
+    
+    var callRepository: (any CallRepositoryProtocol)? {
+        get { storage[CallRepositoryKey.self] }
+        set { storage[CallRepositoryKey.self] = newValue }
+    }
+    
+    var callHub: CallHub? {
+        get { storage[CallHubKey.self] }
+        set { storage[CallHubKey.self] = newValue }
+    }
+    
+    var iceServerProvider: IceServerProvider? {
+        get { storage[IceServerProviderKey.self] }
+        set { storage[IceServerProviderKey.self] = newValue }
     }
 }
