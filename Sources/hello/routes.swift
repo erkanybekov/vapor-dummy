@@ -27,4 +27,18 @@ private func registerControllers(api: any RoutesBuilder, app: Application) throw
         throw Abort(.internalServerError, reason: "TodoUseCase not configured")
     }
     try api.register(collection: TodoController(todoUseCase: todoUseCase))
+
+    // Call Controller (video calls signaling)
+    guard let callHub = app.callHub,
+          let iceServerProvider = app.iceServerProvider,
+          let callRepository = app.callRepository,
+          let userRepository = app.userRepository else {
+        throw Abort(.internalServerError, reason: "Call services not configured")
+    }
+    try api.register(collection: CallController(
+        hub: callHub,
+        iceServers: iceServerProvider,
+        callRepository: callRepository,
+        userRepository: userRepository
+    ))
 }

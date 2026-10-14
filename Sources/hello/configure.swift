@@ -114,7 +114,8 @@ public func configure(_ app: Application) async throws {
     app.migrations.add(CreateUser())
     app.migrations.add(CreateRevokedToken())
     app.migrations.add(CreateTodo())
-    
+    app.migrations.add(CreateCallRecord())
+
     // Run migrations automatically
     // For initial deployment, we'll run migrations in production too
     // In a real app, you'd want a separate migration command
