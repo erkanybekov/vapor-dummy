@@ -8,6 +8,23 @@ func routes(_ app: Application) throws {
     
     // Register controllers
     try registerControllers(api: api, app: app)
+
+    // Web app: client-side routes (/todos, /calls, ...) are not files on disk,
+    // so answer them with index.html and let the React router take over.
+    app.get("**") { req async throws -> Response in
+        let path = req.url.path
+        let looksLikeFile = path.split(separator: "/").last?.contains(".") ?? false
+        guard !path.hasPrefix("/api/"), !looksLikeFile else {
+            throw Abort(.notFound)
+        }
+        let index = req.application.directory.publicDirectory + "index.html"
+        guard FileManager.default.fileExists(atPath: index) else {
+            throw Abort(.notFound)
+        }
+        let response = try await req.fileio.asyncStreamFile(at: index)
+        response.headers.replaceOrAdd(name: .cacheControl, value: "no-cache")
+        return response
+    }
 }
 
 // MARK: - Controller Registration

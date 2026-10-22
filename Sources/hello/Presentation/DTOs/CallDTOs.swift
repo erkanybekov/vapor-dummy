@@ -20,6 +20,7 @@ struct CallHistoryItem: Content {
     let id: UUID
     let direction: CallDirection
     let peerUserId: UUID
+    let peerUsername: String?
     let video: Bool
     let status: CallStatus
     let endReason: CallEndReason?
@@ -28,7 +29,7 @@ struct CallHistoryItem: Content {
     let endedAt: Date?
     let duration: TimeInterval?
 
-    init(record: CallRecord, viewer: UUID) {
+    init(record: CallRecord, viewer: UUID, peerUsername: String?) {
         self.id = record.id
         if record.callerId == record.calleeId {
             self.direction = .selfCall
@@ -36,6 +37,7 @@ struct CallHistoryItem: Content {
             self.direction = record.callerId == viewer ? .outgoing : .incoming
         }
         self.peerUserId = record.callerId == viewer ? record.calleeId : record.callerId
+        self.peerUsername = peerUsername
         self.video = record.video
         self.status = record.status
         self.endReason = record.endReason

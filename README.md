@@ -5,11 +5,35 @@
 ## ⚡ Быстрый Старт
 
 ```bash
-# 1. Запустить PostgreSQL
-docker-compose up -d
+# 0. Docker через colima (один раз после перезагрузки Mac)
+colima start
 
-# 2. Запустить приложение  
+# 1. PostgreSQL в контейнере
+docker-compose up -d postgres
+
+# 2. API на http://localhost:8080
 swift run
+
+# 3. Веб-приложение на http://localhost:5173 с hot reload (проксирует /api и WebSocket на :8080)
+cd web && npm install && npm run dev
+```
+
+## 🖥 Веб-приложение (`web/`)
+
+React 19 + TypeScript + Vite. Вход и регистрация, задачи и видеозвонки (WebRTC) в одном SPA.
+
+- `npm run build` собирает в `Public/` — Vapor раздаёт фронт и API с одного домена (без CORS, WebSocket на том же хосте).
+  Клиентские маршруты (`/calls`, `/todos`) Vapor отдаёт как `index.html`; ассеты с хешем в имени кэшируются навсегда, HTML — `no-cache`.
+- В Docker-образе фронт собирается отдельным stage (`node:24-slim`), так что на Render ничего руками собирать не нужно.
+- `npm test` — unit-тесты API-клиента (single-flight refresh токенов, синхронизация вкладок), `npm run typecheck` — типы.
+
+```
+web/src/
+├── api/        # fetch-клиент, токены и их refresh, типы DTO
+├── auth/       # AuthProvider: сессия, вход/выход
+├── calls/      # CallManager (WebRTC + стейт-машина), SignalingClient (WebSocket), экран звонка
+├── pages/      # Вход, Звонки, Задачи
+└── ui/         # тосты, иконки
 ```
 
 ## 🔒 Middleware - Что Это?
@@ -240,13 +264,17 @@ Mac                      Server                    iPhone
 
 ### Позвонить себе с другого устройства
 
-1. `swift run` и открыть `http://localhost:8080/call.html` на Mac, войти.
-2. Камера в браузере работает только по HTTPS (или на localhost), поэтому для телефона нужен туннель:
-   ```bash
-   cloudflared tunnel --url http://localhost:8080
-   ```
-3. Открыть выданный `https://….trycloudflare.com/call.html` на iPhone, войти **тем же** аккаунтом.
-4. В «Позвонить» оставить свой email → 📹 Видео. Телефон зазвонит.
+Проще всего — через задеплоенное приложение https://vapor-calls.onrender.com (HTTPS уже есть):
+
+1. Войти на Mac и на iPhone **одним и тем же** аккаунтом. В «Мои устройства онлайн» появятся оба.
+2. В «Новый звонок» оставить свой email → **Видео**. Телефон зазвонит.
+
+Локально: `cd web && npm run build && cd .. && swift run`, открыть `http://localhost:8080` на Mac.
+Камера в браузере работает только по HTTPS (или на localhost), поэтому для телефона нужен туннель:
+```bash
+cloudflared tunnel --url http://localhost:8080
+```
+Каждая вкладка браузера — отдельное устройство, так что позвонить себе можно и между двумя вкладками.
 
 ### TURN (для звонков между разными сетями)
 

@@ -9,3 +9,8 @@ db.sqlite
 .env
 .env.*
 !.env.example
+# Web app (web/ builds into Public/)
+web/node_modules/
+Public/index.html
+Public/assets/
+Public/favicon.svg

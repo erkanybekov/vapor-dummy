@@ -110,7 +110,8 @@ public func configure(_ app: Application) async throws {
     
     // MARK: - Middleware
     // Enable file serving from /Public folder
-    app.middleware.use(FileMiddleware(publicDirectory: app.directory.publicDirectory))
+    app.middleware.use(StaticCacheMiddleware())
+    app.middleware.use(FileMiddleware(publicDirectory: app.directory.publicDirectory, defaultFile: "index.html"))
     
     // CORS middleware for API access
     let corsConfiguration = CORSMiddleware.Configuration(

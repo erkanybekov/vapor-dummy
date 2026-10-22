@@ -176,7 +176,18 @@ final class CallController: RouteCollection, Sendable {
         }
         let limit = min(max(req.query[Int.self, at: "limit"] ?? 50, 1), 200)
         let records = try await callRepository.history(for: userId, limit: limit)
-        return CallHistoryResponse(calls: records.map { CallHistoryItem(record: $0, viewer: userId) })
+
+        // Resolve each distinct peer once; history usually involves a handful of people.
+        let peerIds = Set(records.map { $0.callerId == userId ? $0.calleeId : $0.callerId })
+        var usernames: [UUID: String] = [:]
+        for peerId in peerIds {
+            usernames[peerId] = try await userRepository.find(by: peerId)?.username
+        }
+
+        return CallHistoryResponse(calls: records.map { record in
+            let peerId = record.callerId == userId ? record.calleeId : record.callerId
+            return CallHistoryItem(record: record, viewer: userId, peerUsername: usernames[peerId])
+        })
     }
 
     // MARK: - Helpers
