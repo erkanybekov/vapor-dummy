@@ -154,6 +154,41 @@ nonisolated enum ClientMessage: Encodable, Sendable, Equatable {
     }
 }
 
+// MARK: - Log names
+
+extension ServerMessage {
+    /// Short description for logs; never includes SDP or ICE details.
+    nonisolated var logName: String {
+        switch self {
+        case .hello: "hello"
+        case let .presence(devices): "presence (\(devices.count) devices)"
+        case let .ringing(id, _, n): "call.ringing \(id.uuidString.prefix(8)) on \(n)"
+        case let .incoming(id, caller, video): "call.incoming \(id.uuidString.prefix(8)) from \(caller.deviceName)\(video ? " video" : "")"
+        case let .accepted(id, _, role, _): "call.accepted \(id.uuidString.prefix(8)) as \(role.rawValue)"
+        case let .resumed(id, _, role, _): "call.resumed \(id.uuidString.prefix(8)) as \(role.rawValue)"
+        case let .reconnecting(id): "call.reconnecting \(id.uuidString.prefix(8))"
+        case let .ended(id, reason): "call.ended \(id.uuidString.prefix(8)) \(reason.rawValue)"
+        case let .signal(_, _, signal): "call.signal \(signal.kind.rawValue)"
+        case let .error(code, message, _): "error \(code): \(message)"
+        case .pong: "pong"
+        case let .unknown(type): "unknown \(type)"
+        }
+    }
+}
+
+extension ClientMessage {
+    nonisolated var logName: String {
+        switch self {
+        case let .invite(email, id, video): "call.invite \(email ?? id?.uuidString ?? "?")\(video ? " video" : "")"
+        case let .accept(id): "call.accept \(id.uuidString.prefix(8))"
+        case let .decline(id): "call.decline \(id.uuidString.prefix(8))"
+        case let .hangup(id): "call.hangup \(id.uuidString.prefix(8))"
+        case let .signal(_, signal): "call.signal \(signal.kind.rawValue)"
+        case .ping: "ping"
+        }
+    }
+}
+
 nonisolated enum SignalingErrorText {
     static func text(for code: String, fallback: String) -> String {
         switch code {

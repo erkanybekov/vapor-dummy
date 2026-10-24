@@ -96,6 +96,8 @@ final class WebRTCClient: NSObject {
         let maxFps = format.videoSupportedFrameRateRanges.map(\.maxFrameRate).max() ?? 30
         capturer.startCapture(with: device, format: format, fps: Int(min(maxFps, 30)))
         usingFrontCamera = device.position == .front
+        let size = CMVideoFormatDescriptionGetDimensions(format.formatDescription)
+        Log.info("Camera started", .webrtc, ["camera": front ? "front" : "back", "format": "\(size.width)×\(size.height)", "fps": "\(Int(min(maxFps, 30)))"])
     }
 
     // MARK: - Peer connection
@@ -111,8 +113,53 @@ final class WebRTCClient: NSObject {
         guard let connection = Self.factory.peerConnection(with: config, constraints: constraints, delegate: self) else { return }
         if let localAudioTrack { _ = connection.add(localAudioTrack, streamIds: ["local"]) }
         if let localVideoTrack { _ = connection.add(localVideoTrack, streamIds: ["local"]) }
+        preferH264(on: connection)
         peerConnection = connection
         pendingCandidates = []
+        Log.info("Peer connection created", .webrtc, ["iceServers": "\(iceServers.count)"])
+    }
+
+    /// Prefer H.264: iPhones and Macs encode and decode it in hardware, so the
+    /// picture stays sharp without the CPU throttling resolution. The other
+    /// codecs stay in the list as fallbacks for peers without H.264.
+    private func preferH264(on connection: RTCPeerConnection) {
+        let codecs = Self.factory.rtpReceiverCapabilities(forKind: kRTCMediaStreamTrackKindVideo).codecs
+        let isH264 = { (codec: RTCRtpCodecCapability) in codec.name.caseInsensitiveCompare("H264") == .orderedSame }
+        guard codecs.contains(where: isH264) else { return }
+        let ordered = codecs.filter(isH264) + codecs.filter { !isH264($0) }
+        for transceiver in connection.transceivers where transceiver.mediaType == .video {
+            // Swift keeps an `error: ()` label on the throwing variant because the
+            // deprecated non-throwing overload already took the plain name.
+            do {
+                try transceiver.setCodecPreferences(ordered, error: ())
+            } catch {
+                Log.warning("Could not prefer H.264: \(error.localizedDescription)", .webrtc)
+            }
+        }
+    }
+
+    /// Lets the encoder use up to 2.5 Mbps (720p at 30 fps) instead of a conservative cap.
+    /// Encodings exist only after the local description is set.
+    private func applyVideoEncodingLimits(on connection: RTCPeerConnection) {
+        guard let sender = connection.senders.first(where: { $0.track?.kind == kRTCMediaStreamTrackKindVideo }) else { return }
+        let parameters = sender.parameters
+        guard !parameters.encodings.isEmpty else { return }
+        for encoding in parameters.encodings {
+            encoding.maxBitrateBps = 2_500_000
+            encoding.maxFramerate = 30
+        }
+        parameters.degradationPreference = NSNumber(value: RTCDegradationPreference.balanced.rawValue)
+        sender.parameters = parameters
+    }
+
+    /// A snapshot of the connection's statistics (nil without a connection).
+    func statistics() async -> MediaStats? {
+        guard let connection = peerConnection else { return nil }
+        return await withCheckedContinuation { continuation in
+            connection.statistics { @Sendable report in
+                continuation.resume(returning: MediaStats(report: report))
+            }
+        }
     }
 
     func closePeerConnection() {
@@ -179,6 +226,7 @@ final class WebRTCClient: NSObject {
                 if let error { continuation.resume(throwing: error) } else { continuation.resume() }
             }
         }
+        applyVideoEncodingLimits(on: connection)
     }
 
     private func setRemote(_ description: RTCSessionDescription, on connection: RTCPeerConnection) async throws {
@@ -216,15 +264,16 @@ extension WebRTCClient: RTCPeerConnectionDelegate {
         let payload = IceCandidatePayload(candidate: candidate.sdp, sdpMid: candidate.sdpMid, sdpMLineIndex: candidate.sdpMLineIndex)
         let source = ObjectIdentifier(peerConnection)
         Task { @MainActor [weak self] in
-            guard let self, self.peerConnection.map { ObjectIdentifier($0) } == source else { return }
+            guard let self, self.peerConnection.map({ ObjectIdentifier($0) }) == source else { return }
             self.onIceCandidate(payload)
         }
     }
 
     nonisolated func peerConnection(_ peerConnection: RTCPeerConnection, didChange newState: RTCPeerConnectionState) {
+        Log.info("Peer connection: \(newState.name)", .webrtc)
         let source = ObjectIdentifier(peerConnection)
         Task { @MainActor [weak self] in
-            guard let self, self.peerConnection.map { ObjectIdentifier($0) } == source else { return }
+            guard let self, self.peerConnection.map({ ObjectIdentifier($0) }) == source else { return }
             self.onConnectionState(newState)
         }
     }
@@ -233,10 +282,101 @@ extension WebRTCClient: RTCPeerConnectionDelegate {
     nonisolated func peerConnection(_ peerConnection: RTCPeerConnection, didAdd stream: RTCMediaStream) {}
     nonisolated func peerConnection(_ peerConnection: RTCPeerConnection, didRemove stream: RTCMediaStream) {}
     nonisolated func peerConnectionShouldNegotiate(_ peerConnection: RTCPeerConnection) {}
-    nonisolated func peerConnection(_ peerConnection: RTCPeerConnection, didChange newState: RTCIceConnectionState) {}
+    nonisolated func peerConnection(_ peerConnection: RTCPeerConnection, didChange newState: RTCIceConnectionState) {
+        Log.debug("ICE: \(newState.name)", .webrtc)
+    }
     nonisolated func peerConnection(_ peerConnection: RTCPeerConnection, didChange newState: RTCIceGatheringState) {}
     nonisolated func peerConnection(_ peerConnection: RTCPeerConnection, didRemove candidates: [RTCIceCandidate]) {}
     nonisolated func peerConnection(_ peerConnection: RTCPeerConnection, didOpen dataChannel: RTCDataChannel) {}
+}
+
+// MARK: - State names for logs
+
+extension RTCPeerConnectionState {
+    nonisolated var name: String {
+        switch self {
+        case .new: "new"
+        case .connecting: "connecting"
+        case .connected: "connected"
+        case .disconnected: "disconnected"
+        case .failed: "failed"
+        case .closed: "closed"
+        @unknown default: "unknown(\(rawValue))"
+        }
+    }
+}
+
+extension RTCIceConnectionState {
+    nonisolated var name: String {
+        switch self {
+        case .new: "new"
+        case .checking: "checking"
+        case .connected: "connected"
+        case .completed: "completed"
+        case .failed: "failed"
+        case .disconnected: "disconnected"
+        case .closed: "closed"
+        case .count: "count"
+        @unknown default: "unknown(\(rawValue))"
+        }
+    }
+}
+
+// MARK: - Statistics
+
+/// The parts of a WebRTC stats report that explain call quality.
+nonisolated struct MediaStats: Sendable {
+    struct Video: Sendable {
+        var width = 0
+        var height = 0
+        var fps = 0.0
+        var bytes = 0.0
+        var codec: String?
+        /// Why the encoder lowered quality: "bandwidth", "cpu", "other" or "none".
+        var limitation: String?
+        var packetsLost = 0.0
+        var packetsReceived = 0.0
+    }
+
+    var sent: Video?
+    var received: Video?
+    var rttMs: Double?
+    var availableOutgoingKbps: Double?
+    /// Candidate types of the active path, e.g. "host ↔ srflx" (relay = through TURN).
+    var path: String?
+    let timestamp = Date()
+
+    init(report: RTCStatisticsReport) {
+        let all = Array(report.statistics.values)
+        func number(_ stat: RTCStatistics, _ key: String) -> Double? { (stat.values[key] as? NSNumber)?.doubleValue }
+        func text(_ stat: RTCStatistics, _ key: String) -> String? { stat.values[key] as? String }
+        let byId = Dictionary(all.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+        func codecName(_ stat: RTCStatistics) -> String? {
+            text(stat, "codecId").flatMap { byId[$0] }.flatMap { text($0, "mimeType") }?.replacingOccurrences(of: "video/", with: "")
+        }
+
+        for stat in all {
+            switch stat.type {
+            case "outbound-rtp" where text(stat, "kind") == "video":
+                sent = Video(width: Int(number(stat, "frameWidth") ?? 0), height: Int(number(stat, "frameHeight") ?? 0),
+                             fps: number(stat, "framesPerSecond") ?? 0, bytes: number(stat, "bytesSent") ?? 0,
+                             codec: codecName(stat), limitation: text(stat, "qualityLimitationReason"))
+            case "inbound-rtp" where text(stat, "kind") == "video":
+                received = Video(width: Int(number(stat, "frameWidth") ?? 0), height: Int(number(stat, "frameHeight") ?? 0),
+                                 fps: number(stat, "framesPerSecond") ?? 0, bytes: number(stat, "bytesReceived") ?? 0,
+                                 codec: codecName(stat), packetsLost: number(stat, "packetsLost") ?? 0,
+                                 packetsReceived: number(stat, "packetsReceived") ?? 0)
+            case "candidate-pair" where text(stat, "state") == "succeeded" && (stat.values["nominated"] as? NSNumber)?.boolValue == true:
+                rttMs = number(stat, "currentRoundTripTime").map { $0 * 1000 }
+                availableOutgoingKbps = number(stat, "availableOutgoingBitrate").map { $0 / 1000 }
+                let local = text(stat, "localCandidateId").flatMap { byId[$0] }.flatMap { text($0, "candidateType") }
+                let remote = text(stat, "remoteCandidateId").flatMap { byId[$0] }.flatMap { text($0, "candidateType") }
+                if let local, let remote { path = "\(local) ↔ \(remote)" }
+            default:
+                break
+            }
+        }
+    }
 }
 
 // MARK: - Simulator camera

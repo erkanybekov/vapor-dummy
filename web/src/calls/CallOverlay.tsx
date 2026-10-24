@@ -4,17 +4,21 @@ import { formatDuration, plural } from '../lib/format'
 import { CloseIcon, FlipIcon, HangUpIcon, MicIcon, MicOffIcon, PhoneIcon, VideoIcon, VideoOffIcon } from '../ui/icons'
 import type { ActiveCall } from './CallManager'
 import { useCalls } from './CallProvider'
+import type { CallQuality } from './quality'
 
 function VideoView({
   stream,
   muted = false,
   className,
   onAutoplayBlocked,
+  onAspectChange,
 }: {
   stream: MediaStream | null
   muted?: boolean
   className?: string
   onAutoplayBlocked?: () => void
+  /** Called with width / height whenever the incoming video changes size (e.g. the phone rotates). */
+  onAspectChange?: (aspect: number) => void
 }) {
   const ref = useRef<HTMLVideoElement>(null)
 
@@ -25,7 +29,50 @@ function VideoView({
     if (stream) video.play().catch(() => onAutoplayBlocked?.())
   }, [stream, onAutoplayBlocked])
 
+  useEffect(() => {
+    const video = ref.current
+    if (!video || !onAspectChange) return
+    const report = () => {
+      if (video.videoWidth > 0 && video.videoHeight > 0) onAspectChange(video.videoWidth / video.videoHeight)
+    }
+    video.addEventListener('resize', report)
+    video.addEventListener('loadedmetadata', report)
+    return () => {
+      video.removeEventListener('resize', report)
+      video.removeEventListener('loadedmetadata', report)
+    }
+  }, [onAspectChange])
+
   return <video ref={ref} className={className} autoPlay playsInline muted={muted} />
+}
+
+const LIMITATION_TEXT: Record<string, string> = { bandwidth: 'сеть', cpu: 'процессор', other: 'другое' }
+
+/** Live numbers: what we send (↑) and receive (↓), round trip, loss and the network path. */
+function QualityPanel({ quality }: { quality: CallQuality }) {
+  const { sent, received } = quality
+  return (
+    <div className="quality-panel">
+      {sent && (
+        <div>
+          ↑ {sent.resolution} · {sent.fps} fps · {sent.kbps} kbps · {sent.codec ?? '—'}
+          {sent.limitation && sent.limitation !== 'none' && (
+            <span className="quality-warning"> · ограничение: {LIMITATION_TEXT[sent.limitation] ?? sent.limitation}</span>
+          )}
+        </div>
+      )}
+      {received && (
+        <div>
+          ↓ {received.resolution} · {received.fps} fps · {received.kbps} kbps · {received.codec ?? '—'}
+        </div>
+      )}
+      <div>
+        {quality.rttMs !== undefined && <>RTT {quality.rttMs} ms</>}
+        {quality.lossPercent !== undefined && <> · потери {quality.lossPercent.toFixed(1)}%</>}
+      </div>
+      {quality.path && <div>путь: {quality.path}{quality.path.includes('relay') ? ' (TURN)' : ''}</div>}
+    </div>
+  )
 }
 
 function statusText(call: ActiveCall, elapsed: number, hasMedia: boolean): string {
@@ -55,6 +102,15 @@ export function CallOverlay() {
   const [elapsed, setElapsed] = useState(0)
   const [audioBlocked, setAudioBlocked] = useState(false)
   const onAutoplayBlocked = useCallback(() => setAudioBlocked(true), [])
+  const [remoteAspect, setRemoteAspect] = useState<number | null>(null)
+  const [viewAspect, setViewAspect] = useState(() => window.innerWidth / window.innerHeight)
+  const [showStats, setShowStats] = useState(false)
+
+  useEffect(() => {
+    const onResize = () => setViewAspect(window.innerWidth / window.innerHeight)
+    window.addEventListener('resize', onResize)
+    return () => window.removeEventListener('resize', onResize)
+  }, [])
 
   const connectedAt = call?.connectedAt
   useEffect(() => {
@@ -76,7 +132,10 @@ export function CallOverlay() {
   }, [incomingFrom])
 
   useEffect(() => {
-    if (!call) setAudioBlocked(false)
+    if (!call) {
+      setAudioBlocked(false)
+      setRemoteAspect(null)
+    }
   }, [call])
 
   if (!call) return null
@@ -85,14 +144,19 @@ export function CallOverlay() {
   const showRemoteVideo = call.video && !incoming && state.remoteStream !== null && call.phase === 'active'
   const showLocalVideo = call.video && state.localStream !== null && !state.cameraOff
   const initial = call.peerName.trim().charAt(0).toUpperCase() || '?'
+  // A portrait phone in a landscape window (or the reverse) is shown whole over a
+  // blurred copy, like FaceTime, instead of zooming into its middle.
+  const fitWhole = remoteAspect !== null && remoteAspect > 1 !== viewAspect > 1
 
   return (
     <div className={`call-screen ${showRemoteVideo ? 'has-video' : ''}`} role="dialog" aria-modal="true" aria-label="Звонок">
+      {showRemoteVideo && fitWhole && <VideoView stream={state.remoteStream} muted className="remote-backdrop" />}
       {/* Always mounted: it also plays the audio of audio-only calls. */}
       <VideoView
         stream={state.remoteStream}
-        className={`remote-video ${showRemoteVideo ? '' : 'invisible'}`}
+        className={`remote-video ${fitWhole ? 'fit-whole' : ''} ${showRemoteVideo ? '' : 'invisible'}`}
         onAutoplayBlocked={onAutoplayBlocked}
+        onAspectChange={setRemoteAspect}
       />
 
       {!showRemoteVideo && (
@@ -112,6 +176,12 @@ export function CallOverlay() {
       <header className="call-info">
         <div className="call-name">{call.peerName}</div>
         <div className="call-status">{statusText(call, elapsed, state.localStream !== null)}</div>
+        {call.phase === 'active' && (
+          <button className="stats-toggle" onClick={() => setShowStats((v) => !v)} aria-pressed={showStats}>
+            {showStats ? 'Скрыть качество' : 'Качество связи'}
+          </button>
+        )}
+        {showStats && state.quality && <QualityPanel quality={state.quality} />}
       </header>
 
       {incoming ? (

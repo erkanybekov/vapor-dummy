@@ -66,8 +66,14 @@ final class SignalingClient {
     @discardableResult
     func send(_ message: ClientMessage) -> Bool {
         guard let task, gotHello, let data = try? JSONEncoder().encode(message),
-              let text = String(data: data, encoding: .utf8) else { return false }
-        task.send(.string(text)) { _ in }
+              let text = String(data: data, encoding: .utf8) else {
+            Log.warning("Not sent (socket not ready): \(message.logName)", .signaling)
+            return false
+        }
+        if message != .ping { Log.debug("→ \(message.logName)", .signaling) }
+        task.send(.string(text)) { error in
+            if let error { Log.error(error, .signaling, "Send failed") }
+        }
         return true
     }
 
@@ -101,6 +107,7 @@ final class SignalingClient {
             ]
             var request = URLRequest(url: components.url!)
             request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+            Log.info("Connecting", .signaling, ["host": components.host ?? "?", "attempt": "\(attempt)"])
 
             let task = URLSession.shared.webSocketTask(with: request)
             task.maximumMessageSize = 1 << 20
@@ -117,6 +124,9 @@ final class SignalingClient {
             do {
                 message = try await task.receive()
             } catch {
+                if generation == self.generation {
+                    Log.warning("Socket closed: \(error.localizedDescription)", .signaling, ["closeCode": "\(task.closeCode.rawValue)"])
+                }
                 closed(task, generation: generation)
                 return
             }
@@ -129,8 +139,10 @@ final class SignalingClient {
             }
             guard let data, let decoded = try? JSONDecoder().decode(ServerMessage.self, from: data) else { continue }
 
+            if case .pong = decoded {} else { Log.debug("← \(decoded.logName)", .signaling) }
             if case .hello = decoded {
                 // Only now does the server accept messages from us.
+                Log.info("Online", .signaling)
                 gotHello = true
                 attempt = 0
                 onState(.online)
@@ -152,6 +164,7 @@ final class SignalingClient {
     private func scheduleReconnect() {
         guard running else { return }
         let delay = min(10.0, 0.5 * pow(2, Double(attempt))) + Double.random(in: 0...0.3)
+        Log.info("Reconnecting in \(String(format: "%.1f", delay)) s", .signaling, ["attempt": "\(attempt + 1)"])
         attempt += 1
         reconnectTask?.cancel()
         reconnectTask = Task { [weak self] in

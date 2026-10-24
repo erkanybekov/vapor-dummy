@@ -33,7 +33,8 @@ function ring() {
     tone(660, now)
     tone(880, now + 0.5)
   }
-  navigator.vibrate?.([400, 200, 400])
+  // Browsers refuse vibration before the user has interacted with the page.
+  if (navigator.userActivation?.hasBeenActive ?? true) navigator.vibrate?.([400, 200, 400])
 }
 
 export function startRinging() {

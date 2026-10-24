@@ -1,3 +1,4 @@
+import PulseUI
 import SwiftUI
 
 struct ProfileView: View {
@@ -23,6 +24,15 @@ struct ProfileView: View {
                         }
                     }
                     LabeledContent("Входящие", value: calls.usesCallKit ? "CallKit" : "экран приложения")
+                }
+                Section {
+                    NavigationLink {
+                        ConsoleView()
+                    } label: {
+                        Label("Логи", systemImage: "list.bullet.rectangle.portrait")
+                    }
+                } footer: {
+                    Text("Консоль Pulse: сообщения, сетевые запросы, поиск и экспорт. Открывается и встряхиванием телефона.")
                 }
                 Section {
                     Button("Выйти", role: .destructive) {

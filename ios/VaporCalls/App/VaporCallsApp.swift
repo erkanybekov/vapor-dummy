@@ -1,3 +1,4 @@
+import PulseUI
 import SwiftUI
 
 @main
@@ -20,6 +21,7 @@ struct VaporCallsApp: App {
 
 struct RootView: View {
     @Environment(AppModel.self) private var model
+    @State private var showsLogs = false
 
     var body: some View {
         Group {
@@ -35,6 +37,33 @@ struct RootView: View {
             if signedOut { model.sessionEnded() }
         }
         .task { await model.validateSession() }
+        // Shake the phone anywhere to open the log console (like Talker).
+        .onReceive(NotificationCenter.default.publisher(for: .deviceDidShake)) { _ in
+            showsLogs = true
+        }
+        .sheet(isPresented: $showsLogs) {
+            NavigationStack {
+                ConsoleView()
+                    .toolbar {
+                        ToolbarItem(placement: .cancellationAction) {
+                            Button("Закрыть") { showsLogs = false }
+                        }
+                    }
+            }
+        }
+    }
+}
+
+extension Notification.Name {
+    static let deviceDidShake = Notification.Name("VaporCalls.deviceDidShake")
+}
+
+extension UIWindow {
+    open override func motionEnded(_ motion: UIEvent.EventSubtype, with event: UIEvent?) {
+        super.motionEnded(motion, with: event)
+        if motion == .motionShake {
+            NotificationCenter.default.post(name: .deviceDidShake, object: nil)
+        }
     }
 }
 

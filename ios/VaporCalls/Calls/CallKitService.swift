@@ -81,6 +81,7 @@ final class CallKitService: NSObject {
 
     /// The call ended without the user touching CallKit (remote hang-up, timeout...).
     func reportEnded(id: UUID, reason: CXCallEndedReason) {
+        Log.info("Report ended", .callkit, ["reason": "\(reason.rawValue)"])
         videoByCall[id] = nil
         provider.reportCall(with: id, endedAt: nil, reason: reason)
     }
@@ -102,22 +103,26 @@ final class CallKitService: NSObject {
 
 extension CallKitService: @preconcurrency CXProviderDelegate {
     func providerDidReset(_ provider: CXProvider) {
+        Log.warning("Provider reset", .callkit)
         onReset()
     }
 
     func provider(_ provider: CXProvider, perform action: CXStartCallAction) {
+        Log.info("Start call action", .callkit, ["video": "\(action.isVideo)"])
         configureAudioSession(video: action.isVideo)
         provider.reportOutgoingCall(with: action.callUUID, startedConnectingAt: Date())
         action.fulfill()
     }
 
     func provider(_ provider: CXProvider, perform action: CXAnswerCallAction) {
+        Log.info("Answer action", .callkit)
         configureAudioSession(video: videoByCall[action.callUUID] ?? true)
         onAnswer(action.callUUID)
         action.fulfill()
     }
 
     func provider(_ provider: CXProvider, perform action: CXEndCallAction) {
+        Log.info("End action", .callkit)
         videoByCall[action.callUUID] = nil
         onEnd(action.callUUID)
         action.fulfill()
@@ -129,11 +134,13 @@ extension CallKitService: @preconcurrency CXProviderDelegate {
     }
 
     func provider(_ provider: CXProvider, didActivate audioSession: AVAudioSession) {
+        Log.info("Audio session activated", .callkit, ["route": audioSession.currentRoute.outputs.first?.portName ?? "?"])
         RTCAudioSession.sharedInstance().audioSessionDidActivate(audioSession)
         RTCAudioSession.sharedInstance().isAudioEnabled = true
     }
 
     func provider(_ provider: CXProvider, didDeactivate audioSession: AVAudioSession) {
+        Log.info("Audio session deactivated", .callkit)
         RTCAudioSession.sharedInstance().isAudioEnabled = false
         RTCAudioSession.sharedInstance().audioSessionDidDeactivate(audioSession)
     }

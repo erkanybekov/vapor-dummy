@@ -50,8 +50,10 @@ final class APIClient {
             let response: AuthResponse = try await perform("POST", "auth/refresh", body: ["refreshToken": session.refreshToken], token: nil)
             let next = Session(accessToken: response.accessToken, refreshToken: response.refreshToken, user: response.user)
             sessionStore.set(next)
+            Log.info("Access token refreshed", .auth)
             return next
         } catch let error as APIError where error.status == 401 || error.status == 403 {
+            Log.warning("Refresh token rejected, signing out", .auth, ["status": "\(error.status)"])
             sessionStore.set(nil)
             throw error
         }
@@ -87,6 +89,7 @@ final class APIClient {
             return try await perform(method, path, body: body, token: try await accessToken())
         } catch let error as APIError where error.status == 401 {
             // Rejected before expiry (revoked, secret rotated): refresh once and retry.
+            Log.notice("401 on \(method) \(path), refreshing and retrying", .auth)
             return try await perform(method, path, body: body, token: try await refresh().accessToken)
         }
     }
@@ -117,19 +120,23 @@ final class APIClient {
         let data: Data
         let response: URLResponse
         do {
-            (data, response) = try await URLSession.shared.data(for: request)
+            // Recorded in the Pulse network inspector (with secrets redacted).
+            (data, response) = try await Log.session.data(for: request)
         } catch {
+            Log.error(error, .api, "\(method) \(path)")
             throw APIError(status: 0, message: "Нет связи с сервером")
         }
 
         let status = (response as? HTTPURLResponse)?.statusCode ?? 0
         guard (200..<300).contains(status) else {
             let reason = (try? JSONDecoder().decode([String: AnyDecodable].self, from: data))?["reason"]?.string
+            Log.warning("\(method) \(path) → \(status)", .api, ["reason": reason ?? "—"])
             throw APIError(status: status, message: reason ?? "Ошибка сервера (\(status))")
         }
         do {
             return try Self.decoder.decode(Response.self, from: data)
         } catch {
+            Log.error(error, .api, "Decoding \(Response.self) from \(path)")
             throw APIError(status: status, message: "Неожиданный ответ сервера")
         }
     }

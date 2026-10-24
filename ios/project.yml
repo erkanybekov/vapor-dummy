@@ -19,6 +19,9 @@ packages:
   WebRTC:
     url: https://github.com/stasel/WebRTC
     from: "155.0.0"
+  Pulse:
+    url: https://github.com/kean/Pulse
+    from: "5.2.3"
 
 targets:
   VaporCalls:
@@ -28,6 +31,10 @@ targets:
       - VaporCalls
     dependencies:
       - package: WebRTC
+      - package: Pulse
+        product: Pulse
+      - package: Pulse
+        product: PulseUI
     info:
       path: VaporCalls/Info.plist
       properties:

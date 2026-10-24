@@ -12,6 +12,7 @@ final class AppModel {
 
     init() {
         api = APIClient(sessionStore: sessionStore)
+        Log.info("App started", .app, ["server": ServerEnvironment.baseURL.absoluteString, "device": DeviceIdentity.name])
         if sessionStore.session != nil { startCalls() }
     }
 
@@ -26,6 +27,7 @@ final class AppModel {
     }
 
     func signOut() async {
+        Log.info("Signing out", .auth)
         stopCalls()
         await api.logout()
         sessionStore.set(nil)
@@ -33,6 +35,7 @@ final class AppModel {
 
     /// The session ended outside our control (refresh token rejected).
     func sessionEnded() {
+        Log.notice("Session ended", .auth)
         stopCalls()
     }
 
@@ -44,6 +47,7 @@ final class AppModel {
     }
 
     private func signedIn(_ response: AuthResponse) {
+        Log.info("Signed in as \(response.user.username)", .auth)
         sessionStore.set(Session(accessToken: response.accessToken, refreshToken: response.refreshToken, user: response.user))
         startCalls()
     }

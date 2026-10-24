@@ -1,5 +1,6 @@
 import type { CallEndReason } from '../api/types'
 import { END_REASON_TEXT, ERROR_TEXT, type CallPeer, type CallRole, type ServerMessage, type SignalPayload } from './protocol'
+import { computeQuality, parseStats, preferH264, summarize, type CallQuality, type MediaStats } from './quality'
 import { startRinging, stopRinging } from './ringtone'
 import { SignalingClient, type ConnectionState } from './SignalingClient'
 
@@ -39,6 +40,8 @@ export interface CallSnapshot {
   facingMode: 'user' | 'environment'
   /** Incremented whenever a call ends, so history views know to reload. */
   endedCalls: number
+  /** Live media statistics while a call is connected. */
+  quality: CallQuality | null
 }
 
 export type CallTarget = { email: string } | { userId: string; name: string }
@@ -74,6 +77,7 @@ export class CallManager {
     cameraOff: false,
     facingMode: 'user',
     endedCalls: 0,
+    quality: null,
   }
   private readonly listeners = new Set<() => void>()
   private readonly signaling: SignalingClient
@@ -85,6 +89,7 @@ export class CallManager {
   private inviteSent = false
   /** We hung up before the server told us the call id: hang up as soon as it does. */
   private cancelPendingInvite = false
+  private qualityTimer: ReturnType<typeof setInterval> | undefined
 
   constructor(private readonly options: Options) {
     this.signaling = new SignalingClient({
@@ -333,7 +338,9 @@ export class CallManager {
 
     const stream = await navigator.mediaDevices.getUserMedia({
       audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
-      video: video ? { facingMode: this.snapshot.facingMode, width: { ideal: 1280 }, height: { ideal: 720 } } : false,
+      video: video
+        ? { facingMode: this.snapshot.facingMode, width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { ideal: 30 } }
+        : false,
     })
     // The call may have ended while the browser was asking for permission.
     if (!this.snapshot.call) {
@@ -351,6 +358,7 @@ export class CallManager {
     this.pendingCandidates = []
     const stream = this.snapshot.localStream
     stream?.getTracks().forEach((track) => pc.addTrack(track, stream))
+    this.preferHardwareCodec(pc)
 
     pc.onicecandidate = ({ candidate }) => {
       const callId = this.snapshot.call?.id
@@ -368,6 +376,7 @@ export class CallManager {
       switch (pc.connectionState) {
         case 'connected':
           this.updateCall({ phase: 'active', connectedAt: call.connectedAt ?? Date.now(), degraded: undefined })
+          this.startQualityMonitor()
           break
         case 'disconnected':
           this.updateCall({ degraded: 'poor-network' })
@@ -389,6 +398,7 @@ export class CallManager {
     if (!callId) return
     const pc = this.createPeerConnection()
     await pc.setLocalDescription(await pc.createOffer(options))
+    await this.applyEncodingLimits(pc)
     this.signaling.send({ type: 'call.signal', callId, signal: { kind: 'offer', sdp: pc.localDescription?.sdp } })
   }
 
@@ -401,6 +411,7 @@ export class CallManager {
       await pc.setRemoteDescription({ type: 'offer', sdp: signal.sdp })
       await this.flushCandidates(pc)
       await pc.setLocalDescription(await pc.createAnswer())
+      await this.applyEncodingLimits(pc)
       this.signaling.send({ type: 'call.signal', callId, signal: { kind: 'answer', sdp: pc.localDescription?.sdp } })
     } else if (signal.kind === 'answer') {
       await pc.setRemoteDescription({ type: 'answer', sdp: signal.sdp })
@@ -447,6 +458,61 @@ export class CallManager {
     if (message.role === 'caller') await this.negotiate()
   }
 
+  /** Puts H.264 first: hardware-encoded on Apple devices and most computers. */
+  private preferHardwareCodec(pc: RTCPeerConnection) {
+    const capabilities = RTCRtpReceiver.getCapabilities?.('video')
+    if (!capabilities || !('setCodecPreferences' in RTCRtpTransceiver.prototype)) return
+    const codecs = preferH264(capabilities.codecs)
+    for (const transceiver of pc.getTransceivers()) {
+      if (transceiver.receiver.track.kind !== 'video') continue
+      try {
+        transceiver.setCodecPreferences(codecs)
+      } catch (error) {
+        console.warn('[calls] could not prefer H.264', error)
+      }
+    }
+  }
+
+  /** Lets the encoder use up to 2.5 Mbps (720p at 30 fps). Encodings exist once the local description is set. */
+  private async applyEncodingLimits(pc: RTCPeerConnection) {
+    const sender = pc.getSenders().find((s) => s.track?.kind === 'video')
+    if (!sender) return
+    const parameters = sender.getParameters()
+    if (!parameters.encodings?.length) return
+    for (const encoding of parameters.encodings) {
+      encoding.maxBitrate = 2_500_000
+      encoding.maxFramerate = 30
+    }
+    try {
+      await sender.setParameters(parameters)
+    } catch (error) {
+      console.warn('[calls] could not raise the video bitrate', error)
+    }
+  }
+
+  /** Samples stats every 2 s for the on-screen panel; logs a summary every 10 s. */
+  private startQualityMonitor() {
+    if (this.qualityTimer) return
+    let previous: MediaStats | undefined
+    let sample = 0
+    this.qualityTimer = setInterval(() => {
+      const pc = this.pc
+      if (!pc) return
+      void pc.getStats().then((report) => {
+        if (pc !== this.pc) return
+        const stats = parseStats(report.values())
+        const quality = computeQuality(stats, previous)
+        if (sample % 5 === 0) console.info('[calls] quality', summarize(quality))
+        if (quality.sent?.limitation && quality.sent.limitation !== 'none' && quality.sent.limitation !== previous?.sent?.limitation) {
+          console.warn(`[calls] encoder limited by ${quality.sent.limitation}`)
+        }
+        previous = stats
+        sample += 1
+        this.update({ quality })
+      })
+    }, 2000)
+  }
+
   private closePeerConnection() {
     if (!this.pc) return
     this.pc.onicecandidate = null
@@ -459,6 +525,8 @@ export class CallManager {
 
   private endLocally() {
     const hadCall = this.snapshot.call !== null
+    clearInterval(this.qualityTimer)
+    this.qualityTimer = undefined
     stopRinging()
     this.closePeerConnection()
     this.snapshot.localStream?.getTracks().forEach((track) => track.stop())
@@ -470,6 +538,7 @@ export class CallManager {
       muted: false,
       cameraOff: false,
       endedCalls: this.snapshot.endedCalls + (hadCall ? 1 : 0),
+      quality: null,
     })
   }
 }

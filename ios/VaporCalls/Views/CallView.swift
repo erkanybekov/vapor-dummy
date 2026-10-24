@@ -18,6 +18,7 @@ struct CallView: View {
 private struct CallContent: View {
     let calls: CallManager
     let call: CallManager.ActiveCall
+    @State private var showsStats = false
 
     private var showsRemoteVideo: Bool {
         call.video && call.phase == .active && calls.remoteVideoTrack != nil
@@ -30,7 +31,9 @@ private struct CallContent: View {
     var body: some View {
         ZStack {
             if showsRemoteVideo, let remote = calls.remoteVideoTrack {
-                VideoTrackView(track: remote)
+                // Fits a landscape picture into the portrait screen instead of
+                // zooming into its middle (which also makes it look blurry).
+                VideoTrackView(track: remote, adaptiveFit: true)
                     .ignoresSafeArea()
             } else {
                 RadialGradient(colors: [Color(white: 0.2), .black], center: .init(x: 0.5, y: 0.3), startRadius: 10, endRadius: 500)
@@ -47,6 +50,28 @@ private struct CallContent: View {
                     .shadow(radius: 8)
                     .padding(16)
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
+            }
+
+            if call.phase == .active {
+                VStack(alignment: .leading, spacing: 8) {
+                    Button {
+                        withAnimation { showsStats.toggle() }
+                    } label: {
+                        Image(systemName: showsStats ? "info.circle.fill" : "info.circle")
+                            .font(.title3)
+                            .foregroundStyle(.white)
+                            .padding(10)
+                            .background(.ultraThinMaterial, in: Circle())
+                    }
+                    .accessibilityLabel("Качество связи")
+                    if showsStats, let quality = calls.quality {
+                        QualityPanel(quality: quality)
+                            .transition(.opacity)
+                    }
+                }
+                .padding(16)
+                .padding(.top, 96)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             }
 
             VStack(spacing: 0) {
@@ -195,15 +220,52 @@ private struct RoundButton: View {
     }
 }
 
+/// Live media numbers: what we send (↑) and receive (↓), round trip, loss and the network path.
+private struct QualityPanel: View {
+    let quality: CallQuality
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            if let sent = quality.sent {
+                Text("↑ \(sent.resolution) · \(sent.fps) fps · \(sent.kbps) kbps · \(sent.codec ?? "—")")
+                if let limitation = sent.limitation, limitation != "none" {
+                    Text("  ограничение: \(limitation == "bandwidth" ? "сеть" : limitation == "cpu" ? "процессор" : limitation)")
+                        .foregroundStyle(.yellow)
+                }
+            }
+            if let received = quality.received {
+                Text("↓ \(received.resolution) · \(received.fps) fps · \(received.kbps) kbps · \(received.codec ?? "—")")
+            }
+            HStack(spacing: 8) {
+                if let rtt = quality.rttMs { Text("RTT \(rtt) ms") }
+                if let loss = quality.lossPercent { Text(String(format: "потери %.1f%%", loss)) }
+            }
+            if let path = quality.path {
+                Text("путь: \(path)\(path.contains("relay") ? " (TURN)" : "")")
+            }
+        }
+        .font(.caption.monospacedDigit())
+        .foregroundStyle(.white)
+        .padding(10)
+        .background(.black.opacity(0.55), in: RoundedRectangle(cornerRadius: 12))
+    }
+}
+
 /// Renders a WebRTC video track with Metal.
 struct VideoTrackView: UIViewRepresentable {
     let track: RTCVideoTrack
     var mirrored = false
+    /// Fill the view when the video has the view's orientation; otherwise fit it whole.
+    var adaptiveFit = false
 
     func makeUIView(context: Context) -> RTCMTLVideoView {
         let view = RTCMTLVideoView(frame: .zero)
         view.videoContentMode = .scaleAspectFill
         view.clipsToBounds = true
+        if adaptiveFit {
+            view.delegate = context.coordinator
+            context.coordinator.view = view
+        }
         track.add(view)
         context.coordinator.track = track
         return view
@@ -224,7 +286,20 @@ struct VideoTrackView: UIViewRepresentable {
 
     func makeCoordinator() -> Coordinator { Coordinator() }
 
-    final class Coordinator {
+    final class Coordinator: NSObject {
         var track: RTCVideoTrack?
+        weak var view: RTCMTLVideoView?
+    }
+}
+
+/// RTCMTLVideoView reports size changes on the main thread.
+extension VideoTrackView.Coordinator: @preconcurrency RTCVideoViewDelegate {
+    func videoView(_ videoView: any RTCVideoRenderer, didChangeVideoSize size: CGSize) {
+        guard let view, size.width > 0, size.height > 0 else { return }
+        let bounds = view.bounds.size == .zero ? UIScreen.main.bounds.size : view.bounds.size
+        let videoIsLandscape = size.width > size.height
+        let viewIsLandscape = bounds.width > bounds.height
+        view.videoContentMode = videoIsLandscape == viewIsLandscape ? .scaleAspectFill : .scaleAspectFit
+        Log.debug("Remote video \(Int(size.width))×\(Int(size.height)) → \(videoIsLandscape == viewIsLandscape ? "fill" : "fit")", .webrtc)
     }
 }
