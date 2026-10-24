@@ -190,6 +190,29 @@ GET /api/v1/health    # Статус API и БД
 GET /api/v1/          # Приветствие API
 ```
 
+## 📱 iOS-приложение (`ios/`)
+
+SwiftUI + WebRTC (Google libwebrtc через SPM-пакет `stasel/WebRTC`) + CallKit. Вход, задачи, звонки и история — тот же API и тот же протокол сигналинга, что у веба.
+
+```bash
+brew install xcodegen          # проект описан в ios/project.yml
+cd ios && xcodegen generate    # → VaporCalls.xcodeproj
+open VaporCalls.xcodeproj
+```
+
+- **Сервер** выбирается на экране входа: Render (по умолчанию) или «Этот Mac» (`http://localhost:8080`, только для симулятора).
+- **Симулятор:** камеры нет — вместо неё генерируются тестовые кадры; входящий звонок показывается экраном приложения.
+- **iPhone:** входящие звонят через **CallKit** (системный экран, как у обычного звонка), видео — с фронтальной камеры. Подпись — Personal Team.
+- Звонок дойдёт, только пока приложение открыто: будить закрытое приложение умеют VoIP-пуши (PushKit), а для них нужен платный Apple Developer аккаунт.
+
+```
+ios/VaporCalls/
+├── API/      # APIClient (refresh токенов), SessionStore (Keychain), модели DTO
+├── Calls/    # CallManager (стейт-машина), WebRTCClient, SignalingClient (WebSocket), CallKitService
+├── Views/    # Вход, Звонки, Задачи, Профиль, экран звонка
+└── App/      # точка входа, AppModel, выбор сервера
+```
+
 ## 📹 Видеозвонки (WebRTC)
 
 Свой FaceTime: звонок пользователю по email, а звонок **на свой же email** звонит на твои другие устройства.

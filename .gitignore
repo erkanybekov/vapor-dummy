@@ -14,3 +14,7 @@ web/node_modules/
 Public/index.html
 Public/assets/
 Public/favicon.svg
+
+# iOS (project is generated from ios/project.yml)
+ios/*.xcodeproj/
+ios/build/
