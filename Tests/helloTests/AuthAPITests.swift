@@ -165,19 +165,20 @@ struct AuthAPITests {
             _ = try await register(app, email: email)
 
             for attempt in 1...5 {
-                #expect(try await login(app, email: email, password: "Wr0ngPassword", ip: "10.0.0.\(attempt)") == .unauthorized)
+                #expect(try await login(app, email: email, password: "Wr0ngPassword", ip: "198.51.100.\(attempt)") == .unauthorized)
             }
-            #expect(try await login(app, email: email, password: Self.password, ip: "10.0.1.1") == .tooManyRequests)
+            #expect(try await login(app, email: email, password: Self.password, ip: "198.51.100.99") == .tooManyRequests)
         }
     }
 
-    @Test("Registration is rate limited per client IP")
+    @Test("Registration is rate limited per client IP, which forged entries cannot change")
     func registrationRateLimit() async throws {
         try await withTestApp { app in
-            func attempt(from ip: String) async throws -> (HTTPStatus, String?) {
+            /// As Render delivers it: what the client forged, then the client's address, then a proxy.
+            func attempt(from ip: String, forged: String) async throws -> (HTTPStatus, String?) {
                 var result: (HTTPStatus, String?) = (.internalServerError, nil)
                 try await app.testing().test(.POST, "api/v1/auth/register", beforeRequest: { req in
-                    req.headers.replaceOrAdd(name: .xForwardedFor, value: "\(ip), 10.9.9.9")
+                    req.headers.replaceOrAdd(name: .xForwardedFor, value: "\(forged), \(ip), 10.9.9.9")
                     // A weak password fails fast, without hashing; it still counts.
                     try req.content.encode(["email": uniqueEmail(), "username": "tester", "password": "weak"])
                 }, afterResponse: { res in
@@ -186,13 +187,14 @@ struct AuthAPITests {
                 return result
             }
 
-            for _ in 1...10 {
-                #expect(try await attempt(from: "203.0.113.7").0 == .badRequest)
+            for n in 1...10 {
+                // A different forged entry each time must not reset the count.
+                #expect(try await attempt(from: "203.0.113.7", forged: "1.1.1.\(n)").0 == .badRequest)
             }
-            let (status, retryAfter) = try await attempt(from: "203.0.113.7")
+            let (status, retryAfter) = try await attempt(from: "203.0.113.7", forged: "1.1.1.99")
             #expect(status == .tooManyRequests)
             #expect(retryAfter.flatMap(Int.init).map { $0 > 0 } == true)
-            #expect(try await attempt(from: "203.0.113.8").0 == .badRequest)
+            #expect(try await attempt(from: "203.0.113.8", forged: "1.1.1.1").0 == .badRequest)
         }
     }
 

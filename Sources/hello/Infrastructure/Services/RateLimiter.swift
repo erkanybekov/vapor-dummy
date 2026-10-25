@@ -63,7 +63,15 @@ struct RateLimitMiddleware: AsyncMiddleware {
     let rule: RateLimiter.Rule
 
     func respond(to request: Request, chainingTo next: any AsyncResponder) async throws -> Response {
-        if let wait = await limiter.hit("\(name):\(request.clientIP)", rule: rule) {
+        let ip = request.clientIP
+        if let wait = await limiter.hit("\(name):\(ip)", rule: rule) {
+            // The raw proxy headers show whether `clientIP` picked the right address.
+            request.logger.warning("Rate limited", metadata: [
+                "limit": .string(name),
+                "client-ip": .string(ip),
+                "x-forwarded-for": .string(request.headers[.xForwardedFor].joined(separator: ", ")),
+                "cf-connecting-ip": .string(request.headers.first(name: "CF-Connecting-IP") ?? "-"),
+            ])
             throw Abort.tooManyRequests(retryAfter: wait)
         }
         return try await next.respond(to: request)
@@ -78,18 +86,5 @@ extension Abort {
             headers: ["Retry-After": "\(seconds)"],
             reason: "Too many attempts, try again in \(seconds) s"
         )
-    }
-}
-
-extension Request {
-    /// The client's IP. Behind Render's proxy the socket peer is the proxy, so the
-    /// first `X-Forwarded-For` entry is used. A client can forge that header, so
-    /// per-IP limits are best effort; per-account limits are the real protection.
-    var clientIP: String {
-        if let forwarded = headers.first(name: .xForwardedFor)?.split(separator: ",").first {
-            let ip = forwarded.trimmingCharacters(in: .whitespaces)
-            if !ip.isEmpty { return ip }
-        }
-        return remoteAddress?.ipAddress ?? "unknown"
     }
 }
