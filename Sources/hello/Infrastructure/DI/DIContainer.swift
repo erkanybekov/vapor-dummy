@@ -1,5 +1,7 @@
 import Vapor
 import Fluent
+import JWT
+import NIOConcurrencyHelpers
 
 // MARK: - Dependency Injection Container
 final class DIContainer {
@@ -10,7 +12,9 @@ final class DIContainer {
         
         // Register services
         let passwordHasher = BCryptPasswordHasher()
-        let tokenService = JWTTokenService(application: app, database: app.db)
+        let tokenService = JWTTokenService(keys: app.jwt.keys, database: app.db)
+        app.rateLimiter = RateLimiter()
+        app.lifecycle.use(RevokedTokenCleanup(tokenService: tokenService, logger: app.logger))
         
         // Register use cases
         app.authUseCase = AuthUseCase(
@@ -49,6 +53,45 @@ final class DIContainer {
             configuration.reconnectGrace = .seconds(seconds)
         }
         return configuration
+    }
+}
+
+// MARK: - Revoked Token Cleanup
+
+/// Deletes revocation records of expired tokens at startup and then hourly,
+/// so the table stays as small as the set of tokens that are still valid.
+private final class RevokedTokenCleanup: LifecycleHandler, Sendable {
+    private let tokenService: any TokenServiceProtocol
+    private let logger: Logger
+    private let task = NIOLockedValueBox<Task<Void, Never>?>(nil)
+
+    init(tokenService: any TokenServiceProtocol, logger: Logger) {
+        self.tokenService = tokenService
+        self.logger = logger
+    }
+
+    func didBootAsync(_ application: Application) async throws {
+        task.withLockedValue {
+            $0 = Task { [tokenService, logger] in
+                while !Task.isCancelled {
+                    do {
+                        try await tokenService.purgeExpiredRevocations()
+                    } catch {
+                        logger.warning("Failed to purge expired revoked tokens", metadata: ["error": "\(error)"])
+                    }
+                    try? await Task.sleep(for: .seconds(60 * 60))
+                }
+            }
+        }
+    }
+
+    func shutdownAsync(_ application: Application) async {
+        let running = task.withLockedValue { task in
+            defer { task = nil }
+            return task
+        }
+        running?.cancel()
+        await running?.value
     }
 }
 

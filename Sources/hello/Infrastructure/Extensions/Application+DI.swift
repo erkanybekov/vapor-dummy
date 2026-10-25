@@ -33,6 +33,10 @@ extension Application {
         typealias Value = IceServerProvider
     }
     
+    private struct RateLimiterKey: StorageKey, Sendable {
+        typealias Value = RateLimiter
+    }
+    
     // MARK: Properties
     
     var authUseCase: AuthUseCase? {
@@ -68,5 +72,10 @@ extension Application {
     var iceServerProvider: IceServerProvider? {
         get { storage[IceServerProviderKey.self] }
         set { storage[IceServerProviderKey.self] = newValue }
+    }
+    
+    var rateLimiter: RateLimiter? {
+        get { storage[RateLimiterKey.self] }
+        set { storage[RateLimiterKey.self] = newValue }
     }
 }

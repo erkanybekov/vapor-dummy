@@ -1,5 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, useSyncExternalStore, type ReactNode } from 'react'
-import { ApiError, sessionFromAuth } from '../api/client'
+import { ApiError, getAccessToken, sessionFromAuth } from '../api/client'
 import { authApi } from '../api/endpoints'
 import { sessionStore } from '../api/session'
 import type { User } from '../api/types'
@@ -50,7 +50,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const logout = useCallback(async () => {
     try {
-      await authApi.logout()
+      // Refresh first if due, so the refresh token revoked is the current one.
+      await getAccessToken()
+      await authApi.logout(sessionStore.get()?.refreshToken)
     } catch {
       // Signing out locally is what matters.
     }

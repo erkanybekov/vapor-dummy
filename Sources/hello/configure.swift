@@ -39,41 +39,16 @@ public func configure(_ app: Application) async throws {
             )
         ), as: .psql)
     } 
-    // Try individual environment variables (fallback for Render)
-    else if let dbHost = Environment.get("DATABASE_HOST"),
-            !dbHost.isEmpty,
-            dbHost != "localhost" {
+    // Individual environment variables, or the docker-compose defaults in development
+    // and tests. Tests use their own database because they drop the tables they create.
+    else if Environment.get("DATABASE_HOST")?.isEmpty == false || app.environment == .development || app.environment == .testing {
+        let dbHost = Environment.get("DATABASE_HOST").flatMap { $0.isEmpty ? nil : $0 } ?? "localhost"
         let dbPort = Environment.get("DATABASE_PORT").flatMap(Int.init(_:)) ?? 5432
-        let dbUsername = Environment.get("DATABASE_USER") ?? Environment.get("DATABASE_USERNAME") ?? "vapor_user"
-        let dbPassword = Environment.get("DATABASE_PASSWORD") ?? ""
-        let dbName = Environment.get("DATABASE_NAME") ?? "vapor_database"
+        let dbUsername = Environment.get("DATABASE_USER") ?? Environment.get("DATABASE_USERNAME") ?? "vapor_username"
+        let dbPassword = Environment.get("DATABASE_PASSWORD") ?? "vapor_password"
+        let dbName = Environment.get("DATABASE_NAME") ?? (app.environment == .testing ? "vapor_test" : "vapor_database")
         
-        print("🔍 Using individual env vars: \(dbHost):\(dbPort) db=\(dbName) user=\(dbUsername)")
-        
-        app.databases.use(
-            .postgres(
-                configuration: .init(
-                    hostname: dbHost,
-                    port: dbPort,
-                    username: dbUsername,
-                    password: dbPassword,
-                    database: dbName,
-                    tls: .disable
-                )
-            ),
-            as: .psql
-        )
-    }
-    // Local development fallback
-    else if app.environment == .development {
-        print("⚠️ No database configuration found, using local development defaults")
-        let dbHost = "localhost"
-        let dbPort = 5432
-        let dbUsername = "vapor_username"
-        let dbPassword = "vapor_password"
-        let dbName = "vapor_database"
-        
-        print("🔍 Local dev config: \(dbHost):\(dbPort) db=\(dbName) user=\(dbUsername)")
+        print("🔍 Database: \(dbHost):\(dbPort) db=\(dbName) user=\(dbUsername)")
         
         app.databases.use(
             .postgres(
@@ -102,6 +77,7 @@ public func configure(_ app: Application) async throws {
     app.migrations.add(CreateRevokedToken())
     app.migrations.add(CreateTodo())
     app.migrations.add(CreateCallRecord())
+    app.migrations.add(AddIndexes())
 
     // Run migrations automatically
     // For initial deployment, we'll run migrations in production too
@@ -140,36 +116,22 @@ public func configure(_ app: Application) async throws {
 
 // MARK: - JWT Configuration
 private func configureJWT(_ app: Application) async throws {
-    // JWTKit 5.0+ configuration
-    // In production, use environment variables for secrets
-    let secretKey = Environment.get("JWT_SECRET") ?? "your-256-bit-secret-key-here-must-be-very-secure"
-    
-    // Add HMAC key for JWTKit 5.0+ using the correct API
-    // Create HMACKey from the secret string
-    let key = HMACKey(from: secretKey)
-    await app.jwt.keys.add(hmac: key, digestAlgorithm: .sha256)
-}
-
-// MARK: - Key Generation (Development Only)
-private func generateKeysIfNeeded(privateKeyPath: String, publicKeyPath: String) {
-    let fileManager = FileManager.default
-    
-    if !fileManager.fileExists(atPath: privateKeyPath) || !fileManager.fileExists(atPath: publicKeyPath) {
-        print("🔑 JWT keys not found. Generating new keys...")
-        print("⚠️  In production, use pre-generated keys stored securely!")
-        
-        // For development, we'll create simple HMAC keys instead of RSA
-        // In production, use proper RSA key generation
-        let secretKey = [UInt8].random(count: 32).base64String()
-        
-        do {
-            try secretKey.write(toFile: privateKeyPath, atomically: true, encoding: .utf8)
-            try secretKey.write(toFile: publicKeyPath, atomically: true, encoding: .utf8)
-            print("✅ Development keys generated successfully")
-        } catch {
-            print("❌ Failed to generate keys: \(error)")
+    // Anyone who knows the secret can mint tokens for any user, so production
+    // refuses to start with a missing, short or default one.
+    let secretKey: String
+    if let configured = Environment.get("JWT_SECRET"), !configured.isEmpty {
+        guard configured.utf8.count >= 32 else {
+            fatalError("❌ CRITICAL: JWT_SECRET must be at least 32 characters. Generate one with: openssl rand -hex 32")
         }
+        secretKey = configured
+    } else if app.environment == .production {
+        fatalError("❌ CRITICAL: JWT_SECRET is not set. Generate one with: openssl rand -hex 32")
+    } else {
+        app.logger.warning("JWT_SECRET is not set, using an insecure development key")
+        secretKey = "insecure-development-only-jwt-secret"
     }
+    
+    await app.jwt.keys.add(hmac: HMACKey(from: secretKey), digestAlgorithm: .sha256)
 }
 
 // MARK: - CORS Configuration
@@ -192,16 +154,5 @@ private func getAllowedOrigins(for environment: Environment) -> CORSMiddleware.A
         return .any(allowedDomains)
     default:
         return .none
-    }
-}
-
-// MARK: - Extensions
-extension [UInt8] {
-    static func random(count: Int) -> [UInt8] {
-        return (0..<count).map { _ in UInt8.random(in: 0...255) }
-    }
-    
-    func base64String() -> String {
-        return Data(self).base64EncodedString()
     }
 }

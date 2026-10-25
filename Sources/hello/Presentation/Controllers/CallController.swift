@@ -1,5 +1,4 @@
 import Vapor
-import JWT
 
 // MARK: - Call Controller
 //
@@ -15,17 +14,20 @@ final class CallController: RouteCollection, Sendable {
     private let iceServers: IceServerProvider
     private let callRepository: any CallRepositoryProtocol
     private let userRepository: any UserRepositoryProtocol
+    private let authUseCase: AuthUseCase
 
     init(
         hub: CallHub,
         iceServers: IceServerProvider,
         callRepository: any CallRepositoryProtocol,
-        userRepository: any UserRepositoryProtocol
+        userRepository: any UserRepositoryProtocol,
+        authUseCase: AuthUseCase
     ) {
         self.hub = hub
         self.iceServers = iceServers
         self.callRepository = callRepository
         self.userRepository = userRepository
+        self.authUseCase = authUseCase
     }
 
     func boot(routes: any RoutesBuilder) throws {
@@ -49,11 +51,7 @@ final class CallController: RouteCollection, Sendable {
         guard let token = req.headers.bearerAuthorization?.token ?? req.query[String.self, at: "token"] else {
             throw Abort(.unauthorized, reason: "Missing access token")
         }
-        guard let payload = try? await req.jwt.verify(token, as: AccessTokenPayload.self),
-              payload.tokenType == "access",
-              let userId = UUID(uuidString: payload.subject.value),
-              let user = try await userRepository.find(by: userId),
-              user.isActive else {
+        guard let user = try? await authUseCase.validateAccessToken(token) else {
             throw Abort(.unauthorized, reason: "Invalid access token")
         }
         req.auth.login(user)

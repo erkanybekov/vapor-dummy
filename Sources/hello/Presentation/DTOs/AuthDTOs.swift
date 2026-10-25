@@ -18,6 +18,10 @@ struct RefreshTokenRequest: Content {
     let refreshToken: String
 }
 
+struct LogoutRequest: Content {
+    let refreshToken: String?
+}
+
 // MARK: - Response DTOs
 
 struct AuthResponse: Content {

@@ -172,8 +172,11 @@ extension APIClient {
         try await get("auth/me")
     }
 
+    /// Revokes both tokens on the server. Refreshes first if due, so the refresh
+    /// token revoked is the current one.
     func logout() async {
-        let _: Message? = try? await send("POST", "auth/logout")
+        guard (try? await accessToken()) != nil, let session = sessionStore.session else { return }
+        let _: Message? = try? await send("POST", "auth/logout", body: ["refreshToken": session.refreshToken])
     }
 
     func todos(page: Int, limit: Int) async throws -> TodoPage {

@@ -118,8 +118,8 @@ public final class AuthUseCase: Sendable {
     }
     
     public func refreshToken(_ refreshToken: String) async throws -> AuthToken {
-        // Validate refresh token and get user ID
-        let userId = try await tokenService.validateToken(refreshToken)
+        // Validate and revoke the refresh token: each one works only once
+        let userId = try await tokenService.consumeRefreshToken(refreshToken)
         
         // Find user
         guard let user = try await userRepository.find(by: userId) else {
@@ -134,9 +134,6 @@ public final class AuthUseCase: Sendable {
         let newAccessToken = try await tokenService.generateAccessToken(for: user)
         let newRefreshToken = try await tokenService.generateRefreshToken(for: user)
         
-        // Revoke old refresh token
-        try await tokenService.revokeToken(refreshToken)
-        
         return AuthToken(
             accessToken: newAccessToken,
             refreshToken: newRefreshToken,
@@ -145,7 +142,7 @@ public final class AuthUseCase: Sendable {
     }
     
     public func validateAccessToken(_ token: String) async throws -> User {
-        let userId = try await tokenService.validateToken(token)
+        let userId = try await tokenService.validateAccessToken(token)
         
         guard let user = try await userRepository.find(by: userId) else {
             throw AuthError.userNotFound
@@ -158,8 +155,13 @@ public final class AuthUseCase: Sendable {
         return user
     }
     
-    public func logout(_ token: String) async throws {
-        try await tokenService.revokeToken(token)
+    /// Revokes the access token and, if the client sends it, the refresh token,
+    /// so neither can be used after signing out.
+    public func logout(accessToken: String, refreshToken: String?) async throws {
+        try await tokenService.revokeToken(accessToken)
+        if let refreshToken {
+            try await tokenService.revokeToken(refreshToken)
+        }
     }
     
     // MARK: - Private Methods

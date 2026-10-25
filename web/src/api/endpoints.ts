@@ -14,7 +14,9 @@ export const authApi = {
 
   me: () => api<User>('/auth/me'),
 
-  logout: () => api<MessageResponse>('/auth/logout', { method: 'POST' }),
+  // Sending the refresh token makes the server revoke it too.
+  logout: (refreshToken?: string) =>
+    api<MessageResponse>('/auth/logout', { method: 'POST', body: refreshToken ? { refreshToken } : undefined }),
 }
 
 export const todosApi = {

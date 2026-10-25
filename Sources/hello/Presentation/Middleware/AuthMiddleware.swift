@@ -1,28 +1,16 @@
 import Vapor
-import JWT
 
 // MARK: - JWT Bearer Authenticator
 
 struct JWTBearerAuthenticator: AsyncBearerAuthenticator {
     func authenticate(bearer: BearerAuthorization, for request: Request) async throws {
-        do {
-            // Verify JWT token
-            let payload = try await request.jwt.verify(as: AccessTokenPayload.self)
-            
-            // Extract user ID from JWT
-            guard let userId = UUID(uuidString: payload.subject.value),
-                  let userRepository = request.application.userRepository,
-                  let user = try await userRepository.find(by: userId),
-                  user.isActive else {
-                return
-            }
-            
-            // Authenticate the user
-            request.auth.login(user)
-        } catch {
-            // Authentication failed silently
+        // Checks the signature, expiry, revocation (logout) and that the user is active.
+        // On failure the request stays unauthenticated and UserAuthenticator answers 401.
+        guard let authUseCase = request.application.authUseCase,
+              let user = try? await authUseCase.validateAccessToken(bearer.token) else {
             return
         }
+        request.auth.login(user)
     }
 }
 

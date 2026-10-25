@@ -103,9 +103,20 @@ Sources/hello/
 POST /api/v1/auth/register    # Регистрация
 POST /api/v1/auth/login       # Вход  
 POST /api/v1/auth/refresh     # Обновить токен
-POST /api/v1/auth/logout      # Выход (защищён)
+POST /api/v1/auth/logout      # Выход (защищён), тело: { "refreshToken": "..." }
 GET  /api/v1/auth/me          # Текущий пользователь (защищён)
 ```
+
+### 🛡 Защита входа
+- **Access-токен** живёт 1 час, **refresh-токен** — 7 дней и работает **один раз**: `/auth/refresh` отзывает его и выдаёт новую пару. Повторное использование даёт `401`.
+- **Выход** отзывает оба токена (refresh клиент передаёт в теле), и они перестают работать сразу, в том числе для WebSocket звонков.
+- **Лимиты** (в памяти процесса, ответ `429` с заголовком `Retry-After`):
+  - вход — 20 запросов за 5 минут с одного IP;
+  - регистрация — 10 в час с одного IP;
+  - refresh — 60 за 5 минут с одного IP;
+  - 5 неверных паролей к одному аккаунту блокируют вход в него на 15 минут, с любого IP.
+- **`JWT_SECRET`** обязателен в production (минимум 32 символа, `openssl rand -hex 32`), иначе сервер не стартует.
+- Отозванные токены лежат в `revoked_tokens` до своего истечения, потом сервер удаляет их сам (при старте и раз в час).
 
 ### ✅ Todo CRUD
 
@@ -574,8 +585,9 @@ vapor-dummy/
 
 JWT settings are configured in `configure.swift`:
 - **Access Token Expiry**: 1 hour
-- **Refresh Token Expiry**: 30 days
+- **Refresh Token Expiry**: 7 days, single use
 - **Algorithm**: HS256
+- **Secret**: `JWT_SECRET`, required in production (at least 32 characters)
 
 ### Database Configuration
 
@@ -593,11 +605,21 @@ Database connection is configured using environment variables:
 
 ## 🧪 Testing
 
-Run the test suite:
+Тесты API ходят в настоящий Postgres, в отдельную базу `vapor_test`: каждый тест в конце удаляет свои таблицы. Один раз создайте её в контейнере из `docker-compose`:
+
+```bash
+docker exec vapor-postgres createdb -U vapor_username vapor_test
+```
+
+Запуск всех тестов:
 
 ```bash
 swift test
 ```
+
+### CI
+
+`.github/workflows/ci.yml` на каждый пуш и pull request гоняет тесты сервера (Swift 6.0 + Postgres, как в Docker) и тесты со сборкой веба. После зелёного пуша в `feature/video-calls` CI запускает деплой на Render через Deploy Hook. Чтобы он работал, скопируйте в Render (vapor-calls → Settings → Deploy Hook) URL хука и сохраните его в GitHub (Settings → Secrets and variables → Actions) как `RENDER_DEPLOY_HOOK_URL`. Без секрета шаг деплоя просто пропускается.
 
 Run tests with coverage:
 

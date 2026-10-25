@@ -34,10 +34,10 @@ private func registerControllers(api: any RoutesBuilder, app: Application) throw
     try api.register(collection: HealthController())
     
     // Auth Controller
-    guard let authUseCase = app.authUseCase else {
+    guard let authUseCase = app.authUseCase, let rateLimiter = app.rateLimiter else {
         throw Abort(.internalServerError, reason: "AuthUseCase not configured")
     }
-    try api.register(collection: AuthController(authUseCase: authUseCase))
+    try api.register(collection: AuthController(authUseCase: authUseCase, rateLimiter: rateLimiter))
     
     // Todo Controller  
     guard let todoUseCase = app.todoUseCase else {
@@ -56,6 +56,7 @@ private func registerControllers(api: any RoutesBuilder, app: Application) throw
         hub: callHub,
         iceServers: iceServerProvider,
         callRepository: callRepository,
-        userRepository: userRepository
+        userRepository: userRepository,
+        authUseCase: authUseCase
     ))
 }

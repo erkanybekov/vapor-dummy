@@ -12,23 +12,29 @@ struct AccessTokenPayload: JWTPayload {
         case issuer = "iss"
         case audience = "aud"
         case tokenType = "type"
+        case tokenId = "jti"
         case userEmail = "email"
         case username = "username"
     }
-    
+
     var subject: SubjectClaim
     var expiration: ExpirationClaim
     var issuedAt: IssuedAtClaim
     var issuer: IssuerClaim
     var audience: AudienceClaim
     var tokenType: String
+    /// Lets a single token be revoked on logout. Tokens issued before it was added have none.
+    var tokenId: String?
     var userEmail: String
     var username: String
-    
+
     func verify(using key: some JWTAlgorithm) throws {
         try expiration.verifyNotExpired()
+        guard tokenType == "access" else {
+            throw JWTError.claimVerificationFailure(failedClaim: nil, reason: "not an access token")
+        }
     }
-    
+
     init(user: User, expiration: Date = Date().addingTimeInterval(3600)) {
         self.subject = SubjectClaim(value: user.id?.uuidString ?? "")
         self.expiration = ExpirationClaim(value: expiration)
@@ -36,6 +42,7 @@ struct AccessTokenPayload: JWTPayload {
         self.issuer = IssuerClaim(value: "vapor-auth-service")
         self.audience = AudienceClaim(value: "vapor-client")
         self.tokenType = "access"
+        self.tokenId = UUID().uuidString
         self.userEmail = user.email
         self.username = user.username
     }
@@ -51,7 +58,7 @@ struct RefreshTokenPayload: JWTPayload {
         case tokenType = "type"
         case tokenId = "jti"
     }
-    
+
     var subject: SubjectClaim
     var expiration: ExpirationClaim
     var issuedAt: IssuedAtClaim
@@ -59,11 +66,14 @@ struct RefreshTokenPayload: JWTPayload {
     var audience: AudienceClaim
     var tokenType: String
     var tokenId: String
-    
+
     func verify(using key: some JWTAlgorithm) throws {
         try expiration.verifyNotExpired()
+        guard tokenType == "refresh" else {
+            throw JWTError.claimVerificationFailure(failedClaim: nil, reason: "not a refresh token")
+        }
     }
-    
+
     init(user: User, expiration: Date = Date().addingTimeInterval(604800)) { // 7 days
         self.subject = SubjectClaim(value: user.id?.uuidString ?? "")
         self.expiration = ExpirationClaim(value: expiration)
@@ -78,24 +88,25 @@ struct RefreshTokenPayload: JWTPayload {
 // MARK: - Revoked Token Model (for token blacklisting)
 final class RevokedTokenModel: Model, @unchecked Sendable {
     static let schema = "revoked_tokens"
-    
+
     @ID(key: .id)
     var id: UUID?
-    
+
+    /// The token's `jti`; unique, so a refresh token can be consumed only once.
     @Field(key: "token_id")
     var tokenId: String
-    
+
     @Field(key: "user_id")
     var userId: UUID
-    
+
     @Timestamp(key: "revoked_at", on: .create)
     var revokedAt: Date?
-    
+
     @Timestamp(key: "expires_at", on: .none)
     var expiresAt: Date?
-    
+
     init() { }
-    
+
     init(tokenId: String, userId: UUID, expiresAt: Date) {
         self.tokenId = tokenId
         self.userId = userId
@@ -105,126 +116,90 @@ final class RevokedTokenModel: Model, @unchecked Sendable {
 
 // MARK: - JWT Token Service Implementation
 final class JWTTokenService: TokenServiceProtocol, @unchecked Sendable {
-    private let application: Application
+    private let keys: JWTKeyCollection
     private let database: any Database
-    
-    init(application: Application, database: any Database) {
-        self.application = application
+
+    init(keys: JWTKeyCollection, database: any Database) {
+        self.keys = keys
         self.database = database
     }
-    
+
     func generateAccessToken(for user: User) async throws -> String {
-        let payload = AccessTokenPayload(user: user)
-        // Create a mock request to access JWT signing functionality
-        let request = Request(application: application, method: .GET, url: URI(path: "/"), on: application.eventLoopGroup.next())
-        return try await request.jwt.sign(payload)
+        try await keys.sign(AccessTokenPayload(user: user))
     }
-    
+
     func generateRefreshToken(for user: User) async throws -> String {
-        let payload = RefreshTokenPayload(user: user)
-        // Create a mock request to access JWT signing functionality
-        let request = Request(application: application, method: .GET, url: URI(path: "/"), on: application.eventLoopGroup.next())
-        return try await request.jwt.sign(payload)
+        try await keys.sign(RefreshTokenPayload(user: user))
     }
-    
-    func validateToken(_ token: String) async throws -> UUID {
-        // First check if it's an access token
+
+    func validateAccessToken(_ token: String) async throws -> UUID {
+        let payload = try await verify(token, as: AccessTokenPayload.self)
+        guard let userId = UUID(uuidString: payload.subject.value) else {
+            throw AuthError.invalidToken
+        }
+        if let tokenId = payload.tokenId, try await isRevoked(tokenId) {
+            throw AuthError.tokenRevoked
+        }
+        return userId
+    }
+
+    func consumeRefreshToken(_ token: String) async throws -> UUID {
+        let payload = try await verify(token, as: RefreshTokenPayload.self)
+        guard let userId = UUID(uuidString: payload.subject.value) else {
+            throw AuthError.invalidToken
+        }
+        // The insert is the check: token_id is unique, so of two concurrent
+        // refreshes with the same token only one gets through.
+        guard try await revoke(tokenId: payload.tokenId, userId: userId, expiresAt: payload.expiration.value) else {
+            throw AuthError.tokenRevoked
+        }
+        return userId
+    }
+
+    func revokeToken(_ token: String) async throws {
+        if let access = try? await keys.verify(token, as: AccessTokenPayload.self) {
+            guard let tokenId = access.tokenId, let userId = UUID(uuidString: access.subject.value) else { return }
+            _ = try await revoke(tokenId: tokenId, userId: userId, expiresAt: access.expiration.value)
+        } else if let refresh = try? await keys.verify(token, as: RefreshTokenPayload.self) {
+            guard let userId = UUID(uuidString: refresh.subject.value) else { return }
+            _ = try await revoke(tokenId: refresh.tokenId, userId: userId, expiresAt: refresh.expiration.value)
+        }
+        // Anything else is already unusable: expired, forged or malformed.
+    }
+
+    func purgeExpiredRevocations() async throws {
+        // An expired token fails its signature check anyway, so its row is no longer needed.
+        try await RevokedTokenModel.query(on: database)
+            .filter(\.$expiresAt < Date())
+            .delete()
+    }
+
+    // MARK: - Private
+
+    private func verify<Payload: JWTPayload>(_ token: String, as type: Payload.Type) async throws -> Payload {
         do {
-            // Create a mock request to access JWT verification functionality
-            let request = Request(application: application, method: .GET, url: URI(path: "/"), on: application.eventLoopGroup.next())
-            request.headers.bearerAuthorization = BearerAuthorization(token: token)
-            let accessPayload = try await request.jwt.verify(as: AccessTokenPayload.self)
-            let userIdString = accessPayload.subject.value
-            
-            guard let userId = UUID(uuidString: userIdString) else {
-                throw AuthError.invalidToken
-            }
-            
-            // Check if token is revoked
-            let isRevoked = try await RevokedTokenModel
-                .query(on: database)
-                .filter(\.$tokenId == token)
-                .first() != nil
-            
-            if isRevoked {
-                throw AuthError.tokenRevoked
-            }
-            
-            return userId
+            return try await keys.verify(token, as: type)
+        } catch let error as JWTError where error.errorType == .claimVerificationFailure {
+            if error.failedClaim is ExpirationClaim { throw AuthError.tokenExpired }
+            throw AuthError.invalidToken
         } catch {
-            // If access token validation fails, try refresh token
-            do {
-                // Create a mock request to access JWT verification functionality
-                let request2 = Request(application: application, method: .GET, url: URI(path: "/"), on: application.eventLoopGroup.next())
-                request2.headers.bearerAuthorization = BearerAuthorization(token: token)
-                let refreshPayload = try await request2.jwt.verify(as: RefreshTokenPayload.self)
-                let userIdString = refreshPayload.subject.value
-                
-                guard let userId = UUID(uuidString: userIdString) else {
-                    throw AuthError.invalidToken
-                }
-                
-                // Check if refresh token is revoked
-                let isRevoked = try await RevokedTokenModel
-                    .query(on: database)
-                    .filter(\.$tokenId == refreshPayload.tokenId)
-                    .first() != nil
-                
-                if isRevoked {
-                    throw AuthError.tokenRevoked
-                }
-                
-                return userId
-            } catch {
-                throw AuthError.invalidToken
-            }
+            throw AuthError.invalidToken
         }
     }
-    
-    func revokeToken(_ token: String) async throws {
-        // Try to decode as access token first
+
+    private func isRevoked(_ tokenId: String) async throws -> Bool {
+        try await RevokedTokenModel.query(on: database)
+            .filter(\.$tokenId == tokenId)
+            .first() != nil
+    }
+
+    /// Returns false if the token was already revoked.
+    private func revoke(tokenId: String, userId: UUID, expiresAt: Date) async throws -> Bool {
         do {
-            // Create a mock request to access JWT verification functionality
-            let request = Request(application: application, method: .GET, url: URI(path: "/"), on: application.eventLoopGroup.next())
-            request.headers.bearerAuthorization = BearerAuthorization(token: token)
-            let accessPayload = try await request.jwt.verify(as: AccessTokenPayload.self)
-            let userIdString = accessPayload.subject.value
-            
-            guard let userId = UUID(uuidString: userIdString) else {
-                throw AuthError.invalidToken
-            }
-            
-            let revokedToken = RevokedTokenModel(
-                tokenId: token,
-                userId: userId,
-                expiresAt: accessPayload.expiration.value
-            )
-            
-            try await revokedToken.save(on: database)
-            return
-        } catch {
-            // Try as refresh token
-            do {
-                // Create a mock request to access JWT verification functionality
-                let request = Request(application: application, method: .GET, url: URI(path: "/"), on: application.eventLoopGroup.next())
-                request.headers.bearerAuthorization = BearerAuthorization(token: token)
-                let refreshPayload = try await request.jwt.verify(as: RefreshTokenPayload.self)
-                let userIdString = refreshPayload.subject.value
-                
-                guard let userId = UUID(uuidString: userIdString) else {
-                    throw AuthError.invalidToken
-                }
-                
-                let revokedToken = RevokedTokenModel(
-                    tokenId: refreshPayload.tokenId,
-                    userId: userId,
-                    expiresAt: refreshPayload.expiration.value
-                )
-                
-                try await revokedToken.save(on: database)
-            } catch {
-                throw AuthError.invalidToken
-            }
+            try await RevokedTokenModel(tokenId: tokenId, userId: userId, expiresAt: expiresAt).create(on: database)
+            return true
+        } catch let error as any DatabaseError where error.isConstraintFailure {
+            return false
         }
     }
 }

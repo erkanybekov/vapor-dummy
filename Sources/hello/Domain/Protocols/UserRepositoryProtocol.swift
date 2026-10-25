@@ -27,6 +27,12 @@ public protocol PasswordHasherProtocol: Sendable {
 public protocol TokenServiceProtocol: Sendable {
     func generateAccessToken(for user: User) async throws -> String
     func generateRefreshToken(for user: User) async throws -> String
-    func validateToken(_ token: String) async throws -> UUID // Returns user ID
+    /// The user ID of a valid access token that has not been revoked.
+    func validateAccessToken(_ token: String) async throws -> UUID
+    /// Validates a refresh token and revokes it in one step, so it works only once.
+    func consumeRefreshToken(_ token: String) async throws -> UUID
+    /// Revokes an access or refresh token; tokens that are already unusable are ignored.
     func revokeToken(_ token: String) async throws
+    /// Deletes revocation records of tokens that have expired anyway.
+    func purgeExpiredRevocations() async throws
 }
