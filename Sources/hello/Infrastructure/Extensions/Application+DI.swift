@@ -37,6 +37,14 @@ extension Application {
         typealias Value = RateLimiter
     }
     
+    private struct ChatHubKey: StorageKey, Sendable {
+        typealias Value = ChatHub
+    }
+    
+    private struct ChatRepositoryKey: StorageKey, Sendable {
+        typealias Value = any ChatRepositoryProtocol
+    }
+    
     // MARK: Properties
     
     var authUseCase: AuthUseCase? {
@@ -77,5 +85,15 @@ extension Application {
     var rateLimiter: RateLimiter? {
         get { storage[RateLimiterKey.self] }
         set { storage[RateLimiterKey.self] = newValue }
+    }
+    
+    var chatHub: ChatHub? {
+        get { storage[ChatHubKey.self] }
+        set { storage[ChatHubKey.self] = newValue }
+    }
+    
+    var chatRepository: (any ChatRepositoryProtocol)? {
+        get { storage[ChatRepositoryKey.self] }
+        set { storage[ChatRepositoryKey.self] = newValue }
     }
 }

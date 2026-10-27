@@ -5,6 +5,8 @@ import { AuthProvider, useAuth } from './auth/AuthProvider'
 import { CallProvider } from './calls/CallProvider'
 import { AuthPage } from './pages/AuthPage'
 import { CallsPage } from './pages/CallsPage'
+import { ChatPage } from './pages/ChatPage'
+import { GuidePage } from './pages/GuidePage'
 import { TodosPage } from './pages/TodosPage'
 import { ToastProvider } from './ui/Toast'
 
@@ -70,6 +72,8 @@ export function App() {
               <Route index element={<Navigate to="/calls" replace />} />
               <Route path="/calls" element={<CallsPage />} />
               <Route path="/todos" element={<TodosPage />} />
+              <Route path="/chat" element={<ChatPage />} />
+              <Route path="/guide" element={<GuidePage />} />
             </Route>
             <Route path="*" element={<NotFound />} />
           </Routes>

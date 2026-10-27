@@ -42,19 +42,8 @@ final class CallController: RouteCollection, Sendable {
 
     // MARK: - WebSocket
 
-    /// Authenticates before upgrading, so a bad token gets a real `401` response.
-    /// (A failing `shouldUpgrade` makes Vapor drop the TCP connection instead,
-    /// which clients cannot tell apart from a network error.)
     func upgrade(_ req: Request) async throws -> Response {
-        // Browsers cannot set headers on a WebSocket, so the access token may also
-        // come as ?token=. Native clients should send the Authorization header.
-        guard let token = req.headers.bearerAuthorization?.token ?? req.query[String.self, at: "token"] else {
-            throw Abort(.unauthorized, reason: "Missing access token")
-        }
-        guard let user = try? await authUseCase.validateAccessToken(token) else {
-            throw Abort(.unauthorized, reason: "Invalid access token")
-        }
-        req.auth.login(user)
+        _ = try await req.authenticateWebSocket(with: authUseCase)
         return req.webSocket(maxFrameSize: .init(integerLiteral: Self.maxFrameSize), onUpgrade: runSession)
     }
 

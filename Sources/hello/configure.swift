@@ -78,6 +78,7 @@ public func configure(_ app: Application) async throws {
     app.migrations.add(CreateTodo())
     app.migrations.add(CreateCallRecord())
     app.migrations.add(AddIndexes())
+    app.migrations.add(CreateChatMessage())
 
     // Run migrations automatically
     // For initial deployment, we'll run migrations in production too

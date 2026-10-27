@@ -39,6 +39,10 @@ final class DIContainer {
         )
         app.lifecycle.use(CallRecorderLifecycle(recorder: callRecorder))
 
+        // Chat (WebSocket training ground)
+        app.chatHub = ChatHub()
+        app.chatRepository = ChatRepository(database: app.db)
+
         if app.iceServerProvider?.hasTURN == false {
             app.logger.warning("TURN is not configured: calls between devices behind strict NATs or mobile carriers may fail to connect. Set TURN_URLS and TURN_SECRET.")
         }

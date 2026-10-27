@@ -59,4 +59,10 @@ private func registerControllers(api: any RoutesBuilder, app: Application) throw
         userRepository: userRepository,
         authUseCase: authUseCase
     ))
+
+    // Chat Controller (WebSocket training ground)
+    guard let chatHub = app.chatHub, let chatRepository = app.chatRepository else {
+        throw Abort(.internalServerError, reason: "Chat services not configured")
+    }
+    try api.register(collection: ChatController(hub: chatHub, repository: chatRepository, authUseCase: authUseCase))
 }
