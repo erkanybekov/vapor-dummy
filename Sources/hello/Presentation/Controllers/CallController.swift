@@ -9,25 +9,31 @@ import Vapor
 final class CallController: RouteCollection, Sendable {
     /// An audio+video SDP offer is a few KB; leave headroom for many codecs.
     private static let maxFrameSize = 128 * 1024
+    /// Per account: each invite rings a device or writes a history row, unlike the
+    /// cheap signaling messages the per-socket token bucket is sized for.
+    private static let inviteLimit = RateLimiter.Rule(limit: 10, window: .seconds(60))
 
     private let hub: CallHub
     private let iceServers: IceServerProvider
     private let callRepository: any CallRepositoryProtocol
     private let userRepository: any UserRepositoryProtocol
     private let authUseCase: AuthUseCase
+    private let rateLimiter: RateLimiter
 
     init(
         hub: CallHub,
         iceServers: IceServerProvider,
         callRepository: any CallRepositoryProtocol,
         userRepository: any UserRepositoryProtocol,
-        authUseCase: AuthUseCase
+        authUseCase: AuthUseCase,
+        rateLimiter: RateLimiter
     ) {
         self.hub = hub
         self.iceServers = iceServers
         self.callRepository = callRepository
         self.userRepository = userRepository
         self.authUseCase = authUseCase
+        self.rateLimiter = rateLimiter
     }
 
     func boot(routes: any RoutesBuilder) throws {
@@ -115,6 +121,10 @@ final class CallController: RouteCollection, Sendable {
             connection.send(.pong)
             return
         case let .invite(calleeId, calleeEmail, video):
+            if await rateLimiter.hit("call-invites:\(peer.userId)", rule: Self.inviteLimit) != nil {
+                connection.send(.error(code: .rateLimited, message: "Too many calls, try again in a minute", callId: nil))
+                return
+            }
             guard let callee = await resolveCallee(id: calleeId, email: calleeEmail) else {
                 connection.send(.error(code: .userNotFound, message: "User not found", callId: nil))
                 return

@@ -11,7 +11,7 @@ final class DIContainer {
         app.todoRepository = TodoRepository(database: app.db)
         
         // Register services
-        let passwordHasher = BCryptPasswordHasher()
+        let passwordHasher = BCryptPasswordHasher(threadPool: app.threadPool)
         let tokenService = JWTTokenService(keys: app.jwt.keys, database: app.db)
         app.rateLimiter = RateLimiter()
         app.lifecycle.use(RevokedTokenCleanup(tokenService: tokenService, logger: app.logger))
@@ -37,7 +37,7 @@ final class DIContainer {
             logger: app.logger,
             onRecord: { callRecorder.record($0) }
         )
-        app.lifecycle.use(CallRecorderLifecycle(recorder: callRecorder))
+        app.lifecycle.use(CallRecorderLifecycle(recorder: callRecorder, repository: callRepository, logger: app.logger))
 
         // Chat (WebSocket training ground)
         app.chatHub = ChatHub()
@@ -101,9 +101,24 @@ private final class RevokedTokenCleanup: LifecycleHandler, Sendable {
 
 // MARK: - Call Recorder Lifecycle
 
-/// Flushes pending call history writes before the database shuts down.
+/// Closes the records of calls the previous process left open at startup, and
+/// flushes pending call history writes before the database shuts down.
 private struct CallRecorderLifecycle: LifecycleHandler {
     let recorder: CallRecorder
+    let repository: any CallRepositoryProtocol
+    let logger: Logger
+
+    /// Calls live in the hub's memory, so a restart forgets them with no one to end their records.
+    func didBootAsync(_ application: Application) async throws {
+        do {
+            let count = try await repository.finishInterrupted()
+            if count > 0 {
+                logger.info("Finished calls interrupted by a restart", metadata: ["count": "\(count)"])
+            }
+        } catch {
+            logger.warning("Failed to finish interrupted calls", metadata: ["error": "\(error)"])
+        }
+    }
 
     func shutdownAsync(_ application: Application) async {
         await recorder.shutdown()

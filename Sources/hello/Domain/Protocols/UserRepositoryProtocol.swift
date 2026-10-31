@@ -19,8 +19,8 @@ public protocol AuthServiceProtocol: Sendable {
 
 // MARK: - Password Hasher Protocol
 public protocol PasswordHasherProtocol: Sendable {
-    func hash(_ password: String) throws -> String
-    func verify(_ password: String, against hash: String) throws -> Bool
+    func hash(_ password: String) async throws -> String
+    func verify(_ password: String, against hash: String) async throws -> Bool
 }
 
 // MARK: - Token Service Protocol

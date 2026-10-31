@@ -34,11 +34,15 @@ private func registerControllers(api: any RoutesBuilder, app: Application) throw
     try api.register(collection: HealthController())
     
     // Auth Controller
-    guard let authUseCase = app.authUseCase, let rateLimiter = app.rateLimiter else {
+    guard let authUseCase = app.authUseCase, let rateLimiter = app.rateLimiter,
+          let callHub = app.callHub, let chatHub = app.chatHub else {
         throw Abort(.internalServerError, reason: "AuthUseCase not configured")
     }
-    try api.register(collection: AuthController(authUseCase: authUseCase, rateLimiter: rateLimiter))
-    
+    try api.register(collection: AuthController(authUseCase: authUseCase, rateLimiter: rateLimiter) { userId in
+        await callHub.closeConnections(of: userId)
+        await chatHub.closeConnections(of: userId)
+    })
+
     // Todo Controller  
     guard let todoUseCase = app.todoUseCase else {
         throw Abort(.internalServerError, reason: "TodoUseCase not configured")
@@ -46,8 +50,7 @@ private func registerControllers(api: any RoutesBuilder, app: Application) throw
     try api.register(collection: TodoController(todoUseCase: todoUseCase))
 
     // Call Controller (video calls signaling)
-    guard let callHub = app.callHub,
-          let iceServerProvider = app.iceServerProvider,
+    guard let iceServerProvider = app.iceServerProvider,
           let callRepository = app.callRepository,
           let userRepository = app.userRepository else {
         throw Abort(.internalServerError, reason: "Call services not configured")
@@ -57,11 +60,12 @@ private func registerControllers(api: any RoutesBuilder, app: Application) throw
         iceServers: iceServerProvider,
         callRepository: callRepository,
         userRepository: userRepository,
-        authUseCase: authUseCase
+        authUseCase: authUseCase,
+        rateLimiter: rateLimiter
     ))
 
     // Chat Controller (WebSocket training ground)
-    guard let chatHub = app.chatHub, let chatRepository = app.chatRepository else {
+    guard let chatRepository = app.chatRepository else {
         throw Abort(.internalServerError, reason: "Chat services not configured")
     }
     try api.register(collection: ChatController(hub: chatHub, repository: chatRepository, authUseCase: authUseCase))

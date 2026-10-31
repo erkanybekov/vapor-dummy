@@ -11,7 +11,8 @@ public enum AuthError: Error, LocalizedError {
     case tokenRevoked
     case passwordTooWeak
     case invalidEmail
-    
+    case invalidUsername
+
     public var errorDescription: String? {
         switch self {
         case .invalidCredentials:
@@ -32,12 +33,17 @@ public enum AuthError: Error, LocalizedError {
             return "Password does not meet security requirements"
         case .invalidEmail:
             return "Invalid email format"
+        case .invalidUsername:
+            return "Username must be 1-\(AuthUseCase.maxUsernameLength) characters"
         }
     }
 }
 
 // MARK: - Authentication Use Case
 public final class AuthUseCase: Sendable {
+    /// Clients fall back to the part of the email before `@`, which is at most 64 characters.
+    static let maxUsernameLength = 64
+
     private let userRepository: any UserRepositoryProtocol
     private let passwordHasher: any PasswordHasherProtocol
     private let tokenService: any TokenServiceProtocol
@@ -71,7 +77,7 @@ public final class AuthUseCase: Sendable {
         }
         
         // Verify password
-        guard try passwordHasher.verify(credentials.password, against: user.passwordHash) else {
+        guard try await passwordHasher.verify(credentials.password, against: user.passwordHash) else {
             throw AuthError.invalidCredentials
         }
         
@@ -91,18 +97,23 @@ public final class AuthUseCase: Sendable {
         guard isValidEmail(email) else {
             throw AuthError.invalidEmail
         }
-        
+
+        let username = username.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard (1...Self.maxUsernameLength).contains(username.count) else {
+            throw AuthError.invalidUsername
+        }
+
         guard isPasswordStrong(password) else {
             throw AuthError.passwordTooWeak
         }
-        
+
         // Check if user already exists
         if let _ = try await userRepository.find(by: email) {
             throw AuthError.emailAlreadyExists
         }
         
         // Hash password
-        let passwordHash = try passwordHasher.hash(password)
+        let passwordHash = try await passwordHasher.hash(password)
         
         // Create user
         let newUser = User(

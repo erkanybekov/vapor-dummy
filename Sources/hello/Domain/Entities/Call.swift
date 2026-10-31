@@ -86,7 +86,8 @@ struct CallRecord: Sendable, Equatable {
     }
 
     /// Marks the record as finished and derives the final status from the reason.
-    mutating func finish(reason: CallEndReason, at date: Date = Date()) {
+    /// `date` is nil when the end time is unknown; the call then has no duration.
+    mutating func finish(reason: CallEndReason, at date: Date? = Date()) {
         endReason = reason
         endedAt = date
         if answeredAt != nil {

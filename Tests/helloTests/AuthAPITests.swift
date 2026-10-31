@@ -48,6 +48,18 @@ extension DatabaseTests {
             }
         }
 
+        @Test("Health check fails when the database cannot answer")
+        func healthFailsWithoutDatabase() async throws {
+            try await withTestApp { app in
+                try await app.autoRevert() // the query behind the check now fails
+                try await app.testing().test(.GET, "api/v1/health") { res in
+                    #expect(res.status == .serviceUnavailable)
+                    #expect(res.body.string.contains("unhealthy"))
+                    #expect(res.body.string.contains("disconnected"))
+                }
+            }
+        }
+
         @Test("Register, then sign in only with the right password")
         func registerAndLogin() async throws {
             try await withTestApp { app in
@@ -73,6 +85,25 @@ extension DatabaseTests {
                     }, afterResponse: { res in
                         #expect(res.status == expected)
                     })
+                }
+            }
+        }
+
+        @Test("Registration rejects a blank or too long username and trims the rest")
+        func usernameValidation() async throws {
+            try await withTestApp { app in
+                for username in ["", "   \n", String(repeating: "x", count: 65)] {
+                    try await app.testing().test(.POST, "api/v1/auth/register", beforeRequest: { req in
+                        try req.content.encode(["email": uniqueEmail(), "username": username, "password": DatabaseTests.password])
+                    }, afterResponse: { res in
+                        #expect(res.status == .badRequest)
+                    })
+                }
+
+                let tokens = try await register(app, email: uniqueEmail(), username: "  Erlan  ")
+                try await app.testing().test(.GET, "api/v1/auth/me", headers: ["Authorization": "Bearer \(tokens.accessToken)"]) { res in
+                    let user = try res.content.decode(UserResponse.self)
+                    #expect(user.username == "Erlan")
                 }
             }
         }

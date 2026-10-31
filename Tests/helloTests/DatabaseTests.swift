@@ -28,6 +28,22 @@ struct DatabaseTests {
         }
     }
 
+    /// For tests over real sockets: the server listens on a random local port.
+    static func withServer(_ test: (Application, Int) async throws -> Void) async throws {
+        try await withTestApp { app in
+            try await app.asyncBoot()
+            try await app.server.start(address: .hostname("127.0.0.1", port: 0))
+            do {
+                let port = try #require(app.http.server.shared.localAddress?.port)
+                try await test(app, port)
+            } catch {
+                await app.server.shutdown()
+                throw error
+            }
+            await app.server.shutdown()
+        }
+    }
+
     static func uniqueEmail() -> String {
         "user-\(UUID().uuidString.prefix(8).lowercased())@example.com"
     }
@@ -41,5 +57,13 @@ struct DatabaseTests {
             tokens = try res.content.decode(Tokens.self)
         })
         return try #require(tokens)
+    }
+
+    static func userId(_ app: Application, token: String) async throws -> UUID {
+        var id: UUID?
+        try await app.testing().test(.GET, "api/v1/auth/me", headers: ["Authorization": "Bearer \(token)"]) { res in
+            id = try res.content.decode(UserResponse.self).id
+        }
+        return try #require(id)
     }
 }

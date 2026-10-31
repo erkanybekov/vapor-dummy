@@ -4,7 +4,7 @@ import Testing
 import VaporTesting
 
 /// A WebSocket client for tests: collects incoming JSON frames and waits for them.
-private final class TestSocket: @unchecked Sendable {
+final class TestSocket: @unchecked Sendable {
     private let lock = NSLock()
     private var frames: [[String: Any]] = []
     private var socket: WebSocket?
@@ -49,6 +49,17 @@ private final class TestSocket: @unchecked Sendable {
     func count(_ type: String) -> Int {
         lock.withLock { frames.filter { $0["type"] as? String == type }.count }
     }
+
+    /// Waits up to `timeout` for the server to close the socket.
+    func waitUntilClosed(timeout: Duration = .seconds(5)) async throws {
+        let deadline = ContinuousClock.now + timeout
+        while ContinuousClock.now < deadline {
+            if lock.withLock({ socket?.isClosed }) == true { return }
+            try await Task.sleep(for: .milliseconds(20))
+        }
+        Issue.record("The socket is still open after \(timeout)")
+        throw CancellationError()
+    }
 }
 
 private func usernames(_ value: Any?) -> [String] {
@@ -63,21 +74,6 @@ extension DatabaseTests {
     /// The chat over a real socket: the server listens on a random local port.
     @Suite("Chat API")
     struct ChatAPITests {
-        private func withServer(_ test: (Application, Int) async throws -> Void) async throws {
-            try await withTestApp { app in
-                try await app.asyncBoot()
-                try await app.server.start(address: .hostname("127.0.0.1", port: 0))
-                do {
-                    let port = try #require(app.http.server.shared.localAddress?.port)
-                    try await test(app, port)
-                } catch {
-                    await app.server.shutdown()
-                    throw error
-                }
-                await app.server.shutdown()
-            }
-        }
-
         @Test("Two people chat live; a reconnect with ?after= catches up on what was missed")
         func liveChat() async throws {
             try await withServer { app, port in

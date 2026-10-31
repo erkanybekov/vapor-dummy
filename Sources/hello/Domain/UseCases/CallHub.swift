@@ -136,6 +136,14 @@ actor CallHub {
         logger.info("Device disconnected", metadata: ["user": "\(userId)", "device": "\(deviceId)"])
     }
 
+    /// Makes every socket of the user authenticate again, which one with a revoked token
+    /// cannot do. Devices that are still signed in come back within the reconnect grace.
+    func closeConnections(of userId: UUID) {
+        for device in devices.values where device.peer.userId == userId {
+            device.connection?.closeForReauthentication()
+        }
+    }
+
     // MARK: - Commands
 
     func handle(_ command: Command, from connection: any SignalingConnection, userId: UUID, deviceId: String) {

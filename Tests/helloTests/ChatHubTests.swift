@@ -7,13 +7,17 @@ import Testing
 final class FakeChatConnection: ChatConnection, @unchecked Sendable {
     private let lock = NSLock()
     private var sent: [ChatServerMessage] = []
+    private var isClosed = false
 
     func send(_ message: ChatServerMessage) {
         lock.withLock { sent.append(message) }
     }
 
-    func close() {}
+    func close() {
+        lock.withLock { isClosed = true }
+    }
 
+    var closed: Bool { lock.withLock { isClosed } }
     var frames: [ChatServerMessage] { lock.withLock { sent } }
     var types: [String] { frames.map(\.type) }
 
@@ -175,6 +179,20 @@ struct ChatWireFormatTests {
         #expect(error["code"] as? String == "rate_limited")
         #expect(error["clientId"] == nil)
         #expect(try encode(.pong).keys.sorted() == ["type"])
+    }
+
+    @Test("Closing a user's connections reaches every room and leaves other users alone")
+    func closeConnections() async {
+        let hub = ChatHub()
+        let general = await connected(hub, alice)
+        let lesson = await connected(hub, alice, room: "lesson")
+        let other = await connected(hub, bob)
+
+        await hub.closeConnections(of: alice.id)
+
+        #expect(general.closed)
+        #expect(lesson.closed)
+        #expect(!other.closed)
     }
 
     @Test("Room names are URL-safe")

@@ -8,6 +8,7 @@ final class FakeConnection: SignalingConnection, @unchecked Sendable {
     private let lock = NSLock()
     private var sent: [ServerMessage] = []
     private var isClosed = false
+    private var mustReauthenticate = false
 
     func send(_ message: ServerMessage) {
         lock.withLock { sent.append(message) }
@@ -17,8 +18,13 @@ final class FakeConnection: SignalingConnection, @unchecked Sendable {
         lock.withLock { isClosed = true }
     }
 
+    func closeForReauthentication() {
+        lock.withLock { mustReauthenticate = true }
+    }
+
     var messages: [ServerMessage] { lock.withLock { sent } }
     var closed: Bool { lock.withLock { isClosed } }
+    var closedForReauthentication: Bool { lock.withLock { mustReauthenticate } }
 
     func clear() {
         lock.withLock { sent.removeAll() }
@@ -359,6 +365,25 @@ struct CallHubTests {
         #expect(record.calleeDeviceId == "iphone")
         #expect(record.endReason == .hangup)
         #expect(mac.connection.endReasons == [.hangup])
+    }
+
+    @Test("Closing a user's connections leaves other users alone")
+    func closeConnections() async {
+        let hub = makeHub()
+        let phone = TestDevice(user: me, id: "phone")
+        let mac = TestDevice(user: me, id: "mac")
+        let other = TestDevice(user: friend, id: "other")
+        for device in [phone, mac, other] {
+            await device.connect(to: hub)
+        }
+
+        await hub.closeConnections(of: me)
+
+        #expect(phone.connection.closedForReauthentication)
+        #expect(mac.connection.closedForReauthentication)
+        #expect(!other.connection.closedForReauthentication)
+        // Not the "replaced" close, which tells a client to stay offline.
+        #expect(!phone.connection.closed)
     }
 }
 

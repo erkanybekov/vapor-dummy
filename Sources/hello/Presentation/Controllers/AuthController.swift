@@ -14,10 +14,12 @@ final class AuthController: RouteCollection, Sendable {
     
     private let authUseCase: AuthUseCase
     private let rateLimiter: RateLimiter
-    
-    init(authUseCase: AuthUseCase, rateLimiter: RateLimiter) {
+    private let closeSockets: @Sendable (UUID) async -> Void
+
+    init(authUseCase: AuthUseCase, rateLimiter: RateLimiter, closeSockets: @escaping @Sendable (UUID) async -> Void) {
         self.authUseCase = authUseCase
         self.rateLimiter = rateLimiter
+        self.closeSockets = closeSockets
     }
     
     func boot(routes: any RoutesBuilder) throws {
@@ -108,7 +110,7 @@ final class AuthController: RouteCollection, Sendable {
             switch error {
             case .emailAlreadyExists:
                 throw Abort(.conflict, reason: error.localizedDescription)
-            case .passwordTooWeak, .invalidEmail:
+            case .passwordTooWeak, .invalidEmail, .invalidUsername:
                 throw Abort(.badRequest, reason: error.localizedDescription)
             default:
                 throw Abort(.internalServerError, reason: "Registration failed")
@@ -143,8 +145,11 @@ final class AuthController: RouteCollection, Sendable {
     }
     
     func logout(_ req: Request) async throws -> MessageResponse {
-        let _ = try req.auth.require(User.self)
-        
+        let user = try req.auth.require(User.self)
+        guard let userId = user.id else {
+            throw Abort(.unauthorized, reason: "User ID not found")
+        }
+
         // Extract token from Authorization header
         guard let authHeader = req.headers.bearerAuthorization else {
             throw Abort(.unauthorized, reason: "Authorization header missing")
@@ -155,10 +160,15 @@ final class AuthController: RouteCollection, Sendable {
         
         do {
             try await authUseCase.logout(accessToken: authHeader.token, refreshToken: refreshToken)
-            return MessageResponse(message: "Successfully logged out")
         } catch {
             throw Abort(.internalServerError, reason: "Logout failed")
         }
+
+        // A socket is authenticated only when it connects, so revoking a token does not
+        // reach it. Which socket used which token is unknown: an access token is replaced
+        // every hour while the socket stays, so all of them have to authenticate again.
+        await closeSockets(userId)
+        return MessageResponse(message: "Successfully logged out")
     }
     
     func getCurrentUser(_ req: Request) async throws -> UserResponse {

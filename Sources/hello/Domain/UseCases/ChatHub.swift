@@ -65,6 +65,13 @@ actor ChatHub {
         }
     }
 
+    /// Makes every socket of the user authenticate again, which one with a revoked token cannot do.
+    func closeConnections(of userId: UUID) {
+        for member in rooms.values.flatMap(\.values) where member.user.id == userId {
+            member.connection.close()
+        }
+    }
+
     /// Delivers a stored message to everyone in its room, the sender's own sockets included:
     /// that echo is how the sender learns the message was stored.
     func broadcast(_ message: ChatMessage) {

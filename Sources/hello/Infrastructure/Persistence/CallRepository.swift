@@ -112,6 +112,21 @@ final class CallRepository: CallRepositoryProtocol {
 
         return models.map { $0.toDomain() }
     }
+
+    func finishInterrupted() async throws -> Int {
+        let models = try await CallRecordModel
+            .query(on: database)
+            .filter(\.$status ~~ [CallStatus.ringing.rawValue, CallStatus.active.rawValue])
+            .all()
+
+        for model in models {
+            var record = model.toDomain()
+            record.finish(reason: .connectionLost, at: nil)
+            model.apply(record)
+            try await model.update(on: database)
+        }
+        return models.count
+    }
 }
 
 // MARK: - Call Recorder

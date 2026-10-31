@@ -28,4 +28,8 @@ final class WebSocketSignalingConnection: SignalingConnection {
     func close() {
         webSocket.close(code: .unknown(Self.kickedCloseCode), promise: nil)
     }
+
+    func closeForReauthentication() {
+        webSocket.close(code: .normalClosure, promise: nil)
+    }
 }
