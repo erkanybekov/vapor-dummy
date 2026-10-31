@@ -12,7 +12,7 @@ RUN npm run build
 # ================================
 # Build image
 # ================================
-FROM swift:6.0-jammy as build
+FROM swift:6.4-jammy as build
 
 # Install OS updates and dependencies
 RUN export DEBIAN_FRONTEND=noninteractive DEBCONF_NONINTERACTIVE_SEEN=true \

@@ -637,7 +637,7 @@ swift test
 
 ### CI
 
-`.github/workflows/ci.yml` на каждый пуш и pull request гоняет тесты сервера (Swift 6.0 + Postgres, как в Docker) и тесты со сборкой веба. После зелёного пуша в `feature/video-calls` CI запускает деплой на Render через Deploy Hook. Чтобы он работал, скопируйте в Render (vapor-calls → Settings → Deploy Hook) URL хука и сохраните его в GitHub (Settings → Secrets and variables → Actions) как `RENDER_DEPLOY_HOOK_URL`. Без секрета шаг деплоя просто пропускается.
+`.github/workflows/ci.yml` на каждый пуш и pull request гоняет тесты сервера (Swift 6.4 + Postgres, как в Docker и в локальном Xcode) и тесты со сборкой веба. После зелёного пуша в `feature/video-calls` CI запускает деплой на Render через Deploy Hook. Чтобы он работал, скопируйте в Render (vapor-calls → Settings → Deploy Hook) URL хука и сохраните его в GitHub (Settings → Secrets and variables → Actions) как `RENDER_DEPLOY_HOOK_URL`. Без секрета шаг деплоя просто пропускается.
 
 Run tests with coverage:
 

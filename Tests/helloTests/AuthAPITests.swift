@@ -134,6 +134,19 @@ extension DatabaseTests {
             }
         }
 
+        @Test("A forged token header is rejected, not a crash (GHSA-hfm2-66rr-3mcf)")
+        func forgedHeaderIsRejected() async throws {
+            try await withTestApp { app in
+                // The header is {"alg":"HS256","typ":"JWT","x":1e300}, the payload {}.
+                let token = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCIsIngiOjFlMzAwfQ.e30.AAAA"
+
+                let meStatus = try await me(app, bearer: token)
+                let refreshStatus = try await refresh(app, with: token).0
+                #expect(meStatus == .unauthorized)
+                #expect(refreshStatus == .unauthorized)
+            }
+        }
+
         @Test("Logout revokes the access and the refresh token")
         func logoutRevokesTokens() async throws {
             try await withTestApp { app in
