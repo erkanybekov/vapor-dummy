@@ -56,6 +56,8 @@ nonisolated enum ServerMessage: Decodable, Sendable, Equatable {
     case reconnecting(callId: UUID)
     case ended(callId: UUID, reason: CallEndReason)
     case signal(callId: UUID, from: String, signal: SignalPayload)
+    /// Reload the contact list: someone on it changed, or came online or went offline.
+    case contactsChanged
     case error(code: String, message: String, callId: UUID?)
     case pong
     /// A type this build does not know yet; ignored instead of failing.
@@ -101,6 +103,8 @@ nonisolated enum ServerMessage: Decodable, Sendable, Equatable {
             self = .signal(callId: try c.decode(UUID.self, forKey: .callId),
                            from: try c.decode(String.self, forKey: .from),
                            signal: try c.decode(SignalPayload.self, forKey: .signal))
+        case "contacts.changed":
+            self = .contactsChanged
         case "error":
             self = .error(code: try c.decode(String.self, forKey: .code),
                           message: try c.decode(String.self, forKey: .message),
@@ -169,6 +173,7 @@ extension ServerMessage {
         case let .reconnecting(id): "call.reconnecting \(id.uuidString.prefix(8))"
         case let .ended(id, reason): "call.ended \(id.uuidString.prefix(8)) \(reason.rawValue)"
         case let .signal(_, _, signal): "call.signal \(signal.kind.rawValue)"
+        case .contactsChanged: "contacts.changed"
         case let .error(code, message, _): "error \(code): \(message)"
         case .pong: "pong"
         case let .unknown(type): "unknown \(type)"

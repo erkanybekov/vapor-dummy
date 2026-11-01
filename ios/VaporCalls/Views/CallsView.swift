@@ -80,6 +80,12 @@ struct CallsView: View {
                         HistoryRow(item: item, canCall: canCall) {
                             Task { await calls.startCall(to: .user(id: item.peerUserId, name: item.peerUsername ?? "Собеседник"), video: item.video) }
                         }
+                        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                            if item.direction != .selfCall {
+                                Button("Заблокировать", role: .destructive) { block(item) }
+                                    .tint(.red)
+                            }
+                        }
                     }
                 }
             }
@@ -100,6 +106,17 @@ struct CallsView: View {
     private func call(video: Bool) {
         let target = email.trimmingCharacters(in: .whitespaces)
         Task { await calls.startCall(to: .email(target), video: video) }
+    }
+
+    private func block(_ item: CallHistoryItem) {
+        Task {
+            do {
+                try await model.api.block(id: item.peerUserId)
+                calls.notice = "Пользователь заблокирован. Разблокировать можно в контактах."
+            } catch {
+                calls.notice = error.localizedDescription
+            }
+        }
     }
 
     private func loadHistory() async {

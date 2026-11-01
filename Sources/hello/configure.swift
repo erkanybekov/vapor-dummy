@@ -79,6 +79,8 @@ public func configure(_ app: Application) async throws {
     app.migrations.add(CreateCallRecord())
     app.migrations.add(AddIndexes())
     app.migrations.add(CreateChatMessage())
+    app.migrations.add(CreateContact())
+    app.migrations.add(AddAdminSupport())
 
     // Run migrations automatically
     // For initial deployment, we'll run migrations in production too
@@ -113,6 +115,9 @@ public func configure(_ app: Application) async throws {
     
     // MARK: - Routes
     try routes(app)
+
+    // MARK: - Commands
+    app.asyncCommands.use(GrantAdminCommand(), as: "grant-admin")
 }
 
 // MARK: - JWT Configuration

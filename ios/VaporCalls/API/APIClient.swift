@@ -157,6 +157,7 @@ extension APIClient {
     private struct LoginBody: Encodable { let email: String; let password: String }
     private struct RegisterBody: Encodable { let email: String; let username: String; let password: String }
     private struct NewTodo: Encodable { let title: String; let description: String? }
+    private struct NewContact: Encodable { let email: String }
     struct TodoChanges: Encodable { var title: String?; var description: String?; var completed: Bool? }
     private struct Message: Decodable { let message: String }
 
@@ -202,5 +203,31 @@ extension APIClient {
     func callHistory(limit: Int = 30) async throws -> [CallHistoryItem] {
         let response: CallHistoryResponse = try await get("calls/history?limit=\(limit)")
         return response.calls
+    }
+
+    func contacts() async throws -> [Contact] {
+        let response: ContactListResponse = try await get("contacts")
+        return response.contacts
+    }
+
+    func addContact(email: String) async throws {
+        let _: Contact = try await send("POST", "contacts", body: NewContact(email: email))
+    }
+
+    func removeContact(id: UUID) async throws {
+        let _: Message = try await send("DELETE", "contacts/\(id.uuidString)")
+    }
+
+    func blockedUsers() async throws -> [BlockedUser] {
+        let response: BlockedUsersResponse = try await get("blocks")
+        return response.users
+    }
+
+    func block(id: UUID) async throws {
+        let _: Message = try await send("PUT", "blocks/\(id.uuidString)")
+    }
+
+    func unblock(id: UUID) async throws {
+        let _: Message = try await send("DELETE", "blocks/\(id.uuidString)")
     }
 }

@@ -38,6 +38,7 @@ export type ServerMessage =
   | { type: 'call.reconnecting'; callId: string }
   | { type: 'call.ended'; callId: string; reason: CallEndReason }
   | { type: 'call.signal'; callId: string; from: string; signal: SignalPayload }
+  | { type: 'contacts.changed' }
   | { type: 'error'; code: string; message: string; callId?: string }
   | { type: 'pong' }
 

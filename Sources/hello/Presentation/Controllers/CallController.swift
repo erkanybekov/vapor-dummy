@@ -17,6 +17,7 @@ final class CallController: RouteCollection, Sendable {
     private let iceServers: IceServerProvider
     private let callRepository: any CallRepositoryProtocol
     private let userRepository: any UserRepositoryProtocol
+    private let contactRepository: any ContactRepositoryProtocol
     private let authUseCase: AuthUseCase
     private let rateLimiter: RateLimiter
 
@@ -25,6 +26,7 @@ final class CallController: RouteCollection, Sendable {
         iceServers: IceServerProvider,
         callRepository: any CallRepositoryProtocol,
         userRepository: any UserRepositoryProtocol,
+        contactRepository: any ContactRepositoryProtocol,
         authUseCase: AuthUseCase,
         rateLimiter: RateLimiter
     ) {
@@ -32,6 +34,7 @@ final class CallController: RouteCollection, Sendable {
         self.iceServers = iceServers
         self.callRepository = callRepository
         self.userRepository = userRepository
+        self.contactRepository = contactRepository
         self.authUseCase = authUseCase
         self.rateLimiter = rateLimiter
     }
@@ -92,7 +95,9 @@ final class CallController: RouteCollection, Sendable {
 
         // Clients wait for `hello` before sending: it goes out only after the
         // handlers above are installed.
-        await hub.connect(connection, peer: peer, iceServers: iceServers.servers(for: userId))
+        if await hub.connect(connection, peer: peer, iceServers: iceServers.servers(for: userId)) {
+            await announcePresenceChange(of: userId, logger: req.logger)
+        }
 
         var rateLimit = TokenBucket(capacity: 60, refillPerSecond: 20)
         for await text in messages {
@@ -103,7 +108,18 @@ final class CallController: RouteCollection, Sendable {
             await handle(text, from: peer, connection: connection)
         }
 
-        await hub.disconnect(connection, userId: userId, deviceId: peer.deviceId)
+        if await hub.disconnect(connection, userId: userId, deviceId: peer.deviceId) {
+            await announcePresenceChange(of: userId, logger: req.logger)
+        }
+    }
+
+    /// Only here and not in the hub, which never waits on the database.
+    private func announcePresenceChange(of userId: UUID, logger: Logger) async {
+        do {
+            await hub.notifyContactsChanged(for: try await contactRepository.mutualContactIds(of: userId))
+        } catch {
+            logger.warning("Failed to tell contacts about a presence change", metadata: ["user": "\(userId)", "error": "\(error)"])
+        }
     }
 
     private func handle(_ text: String, from peer: CallPeer, connection: WebSocketSignalingConnection) async {
@@ -127,6 +143,12 @@ final class CallController: RouteCollection, Sendable {
             }
             guard let callee = await resolveCallee(id: calleeId, email: calleeEmail) else {
                 connection.send(.error(code: .userNotFound, message: "User not found", callId: nil))
+                return
+            }
+            if (try? await contactRepository.isBlocked(peer.userId, by: callee.id)) == true {
+                // Looks the same as a callee with no device online, so the caller cannot
+                // tell they are blocked. No history row: the callee would see it.
+                connection.send(.callEnded(callId: UUID(), reason: .unavailable))
                 return
             }
             command = .invite(callee: callee, video: video)

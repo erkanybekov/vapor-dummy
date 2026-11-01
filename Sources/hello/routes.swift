@@ -52,7 +52,8 @@ private func registerControllers(api: any RoutesBuilder, app: Application) throw
     // Call Controller (video calls signaling)
     guard let iceServerProvider = app.iceServerProvider,
           let callRepository = app.callRepository,
-          let userRepository = app.userRepository else {
+          let userRepository = app.userRepository,
+          let contactRepository = app.contactRepository else {
         throw Abort(.internalServerError, reason: "Call services not configured")
     }
     try api.register(collection: CallController(
@@ -60,13 +61,26 @@ private func registerControllers(api: any RoutesBuilder, app: Application) throw
         iceServers: iceServerProvider,
         callRepository: callRepository,
         userRepository: userRepository,
+        contactRepository: contactRepository,
         authUseCase: authUseCase,
         rateLimiter: rateLimiter
     ))
+
+    // Contact Controller
+    guard let contactUseCase = app.contactUseCase else {
+        throw Abort(.internalServerError, reason: "ContactUseCase not configured")
+    }
+    try api.register(collection: ContactController(contacts: contactUseCase, hub: callHub, rateLimiter: rateLimiter))
 
     // Chat Controller (WebSocket training ground)
     guard let chatRepository = app.chatRepository else {
         throw Abort(.internalServerError, reason: "Chat services not configured")
     }
     try api.register(collection: ChatController(hub: chatHub, repository: chatRepository, authUseCase: authUseCase))
+
+    // Admin Controller
+    guard let adminUseCase = app.adminUseCase else {
+        throw Abort(.internalServerError, reason: "AdminUseCase not configured")
+    }
+    try api.register(collection: AdminController(admin: adminUseCase))
 }

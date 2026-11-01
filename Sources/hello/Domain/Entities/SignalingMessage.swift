@@ -140,6 +140,8 @@ enum ServerMessage: Encodable, Sendable, Equatable {
     case callEnded(callId: UUID, reason: CallEndReason)
     /// Relayed WebRTC negotiation from the other party.
     case callSignal(callId: UUID, from: String, signal: SignalPayload)
+    /// Reload the contact list: someone on it changed, or came online or went offline.
+    case contactsChanged
     case error(code: SignalingErrorCode, message: String, callId: UUID?)
     case pong
 
@@ -159,6 +161,7 @@ enum ServerMessage: Encodable, Sendable, Equatable {
         case .callReconnecting: "call.reconnecting"
         case .callEnded: "call.ended"
         case .callSignal: "call.signal"
+        case .contactsChanged: "contacts.changed"
         case .error: "error"
         case .pong: "pong"
         }
@@ -200,7 +203,7 @@ enum ServerMessage: Encodable, Sendable, Equatable {
             try container.encode(code, forKey: .code)
             try container.encode(message, forKey: .message)
             try container.encodeIfPresent(callId, forKey: .callId)
-        case .pong:
+        case .contactsChanged, .pong:
             break
         }
     }

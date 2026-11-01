@@ -47,7 +47,8 @@ export function AuthPage() {
       else await register(email.trim(), username.trim() || email.split('@')[0] || 'user', password)
       navigate(from, { replace: true })
     } catch (caught) {
-      setError(caught instanceof ApiError ? caught.message : 'Что-то пошло не так')
+      if (caught instanceof ApiError) setError(caught.status === 403 ? 'Аккаунт заблокирован' : caught.message)
+      else setError('Что-то пошло не так')
     } finally {
       setBusy(false)
     }

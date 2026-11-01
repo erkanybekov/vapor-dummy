@@ -7,6 +7,10 @@ protocol CallRepositoryProtocol: Sendable {
     func save(_ record: CallRecord) async throws
     /// Most recent calls where the user was caller or callee.
     func history(for userId: UUID, limit: Int) async throws -> [CallRecord]
+    /// One page of everyone's calls, newest first.
+    func page(page: Int, limit: Int) async throws -> (records: [CallRecord], total: Int)
+    /// How many calls started at or after the date.
+    func count(since date: Date) async throws -> Int
     /// Finishes every call still marked ringing or active and returns how many there were.
     func finishInterrupted() async throws -> Int
 }

@@ -3,7 +3,7 @@ import { useAuth } from './auth/AuthProvider'
 import { CallOverlay } from './calls/CallOverlay'
 import { useCalls } from './calls/CallProvider'
 import type { ConnectionState } from './calls/SignalingClient'
-import { BookIcon, ChecklistIcon, LogOutIcon, MessageIcon, PhoneIcon } from './ui/icons'
+import { BookIcon, ChecklistIcon, LogOutIcon, MessageIcon, PhoneIcon, ShieldIcon, UsersIcon } from './ui/icons'
 
 const CONNECTION_TEXT: Record<ConnectionState, string> = {
   online: 'Онлайн: можно звонить',
@@ -13,11 +13,17 @@ const CONNECTION_TEXT: Record<ConnectionState, string> = {
 }
 
 function NavItems() {
+  const { user } = useAuth()
+
   return (
     <>
       <NavLink to="/calls" className="nav-link">
         <PhoneIcon size={18} />
         <span>Звонки</span>
+      </NavLink>
+      <NavLink to="/contacts" className="nav-link">
+        <UsersIcon size={18} />
+        <span>Контакты</span>
       </NavLink>
       <NavLink to="/todos" className="nav-link">
         <ChecklistIcon size={18} />
@@ -31,6 +37,12 @@ function NavItems() {
         <BookIcon size={18} />
         <span>Гайд</span>
       </NavLink>
+      {user?.isAdmin && (
+        <NavLink to="/admin" className="nav-link">
+          <ShieldIcon size={18} />
+          <span>АРМ</span>
+        </NavLink>
+      )}
     </>
   )
 }

@@ -37,13 +37,15 @@ struct UserResponse: Content {
     let email: String
     let username: String
     let isActive: Bool
+    let isAdmin: Bool
     let createdAt: Date?
-    
+
     init(from user: User) {
         self.id = user.id
         self.email = user.email
         self.username = user.username
         self.isActive = user.isActive
+        self.isAdmin = user.isAdmin
         self.createdAt = user.createdAt
     }
 }

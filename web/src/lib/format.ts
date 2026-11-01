@@ -1,3 +1,15 @@
+import type { CallStatus } from '../api/types'
+
+export const CALL_STATUS_TEXT: Record<CallStatus, string> = {
+  completed: 'Состоялся',
+  missed: 'Пропущен',
+  declined: 'Отклонён',
+  busy: 'Занято',
+  unavailable: 'Недоступен',
+  ringing: 'Звонит',
+  active: 'Идёт',
+}
+
 const timeFormat = new Intl.DateTimeFormat('ru', { hour: '2-digit', minute: '2-digit' })
 const dayFormat = new Intl.DateTimeFormat('ru', { day: 'numeric', month: 'short' })
 

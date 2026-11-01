@@ -44,7 +44,19 @@ extension Application {
     private struct ChatRepositoryKey: StorageKey, Sendable {
         typealias Value = any ChatRepositoryProtocol
     }
-    
+
+    private struct ContactRepositoryKey: StorageKey, Sendable {
+        typealias Value = any ContactRepositoryProtocol
+    }
+
+    private struct ContactUseCaseKey: StorageKey, Sendable {
+        typealias Value = ContactUseCase
+    }
+
+    private struct AdminUseCaseKey: StorageKey, Sendable {
+        typealias Value = AdminUseCase
+    }
+
     // MARK: Properties
     
     var authUseCase: AuthUseCase? {
@@ -95,5 +107,20 @@ extension Application {
     var chatRepository: (any ChatRepositoryProtocol)? {
         get { storage[ChatRepositoryKey.self] }
         set { storage[ChatRepositoryKey.self] = newValue }
+    }
+
+    var contactRepository: (any ContactRepositoryProtocol)? {
+        get { storage[ContactRepositoryKey.self] }
+        set { storage[ContactRepositoryKey.self] = newValue }
+    }
+
+    var contactUseCase: ContactUseCase? {
+        get { storage[ContactUseCaseKey.self] }
+        set { storage[ContactUseCaseKey.self] = newValue }
+    }
+
+    var adminUseCase: AdminUseCase? {
+        get { storage[AdminUseCaseKey.self] }
+        set { storage[AdminUseCaseKey.self] = newValue }
     }
 }

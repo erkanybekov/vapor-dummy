@@ -27,6 +27,10 @@ struct SignalingProtocolTests {
                                      video: true))
     }
 
+    @Test func decodesContactsChanged() throws {
+        #expect(try decode(#"{"type":"contacts.changed"}"#) == .contactsChanged)
+    }
+
     @Test func decodesHelloWithIceServers() throws {
         let message = try decode("""
         {"type":"hello","userId":"\(UUID())","deviceId":"d","iceServers":[

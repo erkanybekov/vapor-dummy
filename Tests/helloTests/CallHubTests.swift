@@ -385,6 +385,55 @@ struct CallHubTests {
         // Not the "replaced" close, which tells a client to stay offline.
         #expect(!phone.connection.closed)
     }
+
+    @Test("A user is online from the first device connecting until the last one leaves")
+    func onlineTransitions() async {
+        let hub = makeHub()
+        let phone = TestDevice(user: me, id: "phone")
+        let mac = TestDevice(user: me, id: "mac")
+
+        #expect(await hub.connect(phone.connection, peer: phone.peer, iceServers: []))
+        #expect(await !hub.connect(mac.connection, peer: mac.peer, iceServers: []))
+        #expect(await hub.onlineUsers(among: [me, friend]) == [me])
+
+        // A newer socket from the same device: still online, and the old one no longer counts.
+        let replacement = FakeConnection()
+        #expect(await !hub.connect(replacement, peer: phone.peer, iceServers: []))
+        #expect(await !hub.disconnect(phone.connection, userId: me, deviceId: "phone"))
+
+        #expect(await !hub.disconnect(replacement, userId: me, deviceId: "phone"))
+        #expect(await hub.disconnect(mac.connection, userId: me, deviceId: "mac"))
+        #expect(await hub.onlineUsers(among: [me]).isEmpty)
+    }
+
+    @Test("A device held open for a reconnect does not count as online")
+    func offlineDuringGrace() async throws {
+        let hub = makeHub()
+        let mac = TestDevice(user: me, id: "mac")
+        let phone = TestDevice(user: me, id: "iphone")
+        _ = try await startSelfCall(hub, mac: mac, phone: phone)
+
+        #expect(await !hub.disconnect(phone.connection, userId: me, deviceId: "iphone"))
+        #expect(await hub.disconnect(mac.connection, userId: me, deviceId: "mac"))
+        #expect(await hub.onlineUsers(among: [me]).isEmpty)
+    }
+
+    @Test("Contact changes reach every device of the given users and nobody else")
+    func notifyContacts() async {
+        let hub = makeHub()
+        let phone = TestDevice(user: me, id: "phone")
+        let mac = TestDevice(user: me, id: "mac")
+        let other = TestDevice(user: friend, id: "other")
+        for device in [phone, mac, other] {
+            await device.connect(to: hub)
+        }
+
+        await hub.notifyContactsChanged(for: [me])
+
+        #expect(phone.connection.messages.contains(.contactsChanged))
+        #expect(mac.connection.messages.contains(.contactsChanged))
+        #expect(!other.connection.messages.contains(.contactsChanged))
+    }
 }
 
 // MARK: - Wire Format Tests
@@ -430,6 +479,9 @@ struct SignalingMessageTests {
         let data = try JSONEncoder().encode(ServerMessage.callEnded(callId: callId, reason: .answeredElsewhere))
         let object = try #require(try JSONSerialization.jsonObject(with: data) as? [String: String])
         #expect(object == ["type": "call.ended", "callId": callId.uuidString, "reason": "answered_elsewhere"])
+
+        let changed = try JSONEncoder().encode(ServerMessage.contactsChanged)
+        #expect(try JSONSerialization.jsonObject(with: changed) as? [String: String] == ["type": "contacts.changed"])
     }
 
     @Test("TURN credentials follow the coturn REST scheme")

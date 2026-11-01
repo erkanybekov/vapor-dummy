@@ -1,12 +1,14 @@
 import { useCallback, useEffect, useState, type FormEvent } from 'react'
 import { ApiError } from '../api/client'
-import { callsApi } from '../api/endpoints'
+import { callsApi, contactsApi } from '../api/endpoints'
 import type { CallHistoryItem } from '../api/types'
 import { useAuth } from '../auth/AuthProvider'
 import { useCalls } from '../calls/CallProvider'
 import { deviceId } from '../lib/device'
-import { formatDuration, formatWhen } from '../lib/format'
+import { CALL_STATUS_TEXT, formatDuration, formatWhen } from '../lib/format'
+import { ConfirmButton } from '../ui/ConfirmButton'
 import {
+  BlockIcon,
   DesktopIcon,
   IncomingIcon,
   OutgoingIcon,
@@ -15,16 +17,7 @@ import {
   SelfCallIcon,
   VideoIcon,
 } from '../ui/icons'
-
-const STATUS_TEXT: Record<CallHistoryItem['status'], string> = {
-  completed: 'Состоялся',
-  missed: 'Пропущен',
-  declined: 'Отклонён',
-  busy: 'Занято',
-  unavailable: 'Недоступен',
-  ringing: 'Звонит',
-  active: 'Идёт',
-}
+import { useToast } from '../ui/Toast'
 
 function DialCard() {
   const { user } = useAuth()
@@ -92,6 +85,7 @@ function DevicesCard() {
 
 function HistoryCard() {
   const { manager, state } = useCalls()
+  const toast = useToast()
   const [calls, setCalls] = useState<CallHistoryItem[] | null>(null)
   const [error, setError] = useState<string | null>(null)
 
@@ -111,6 +105,15 @@ function HistoryCard() {
 
   const callBack = (item: CallHistoryItem, video: boolean) =>
     manager.startCall({ userId: item.peerUserId, name: item.peerUsername ?? 'Собеседник' }, video)
+
+  const block = async (item: CallHistoryItem) => {
+    try {
+      await contactsApi.block(item.peerUserId)
+      toast.show('Пользователь заблокирован. Разблокировать можно в контактах.')
+    } catch {
+      toast.show('Не удалось заблокировать', 'error')
+    }
+  }
 
   return (
     <section className="card">
@@ -139,7 +142,7 @@ function HistoryCard() {
                 <span className="grow">
                   <span className={failed && item.direction !== 'outgoing' ? 'danger-text' : ''}>{who}</span>
                   <span className="muted small block">
-                    {item.video ? 'Видео' : 'Аудио'} · {STATUS_TEXT[item.status]}
+                    {item.video ? 'Видео' : 'Аудио'} · {CALL_STATUS_TEXT[item.status]}
                     {item.duration != null && ` · ${formatDuration(item.duration)}`}
                   </span>
                 </span>
@@ -153,6 +156,11 @@ function HistoryCard() {
                 >
                   {item.video ? <VideoIcon size={18} /> : <PhoneIcon size={18} />}
                 </button>
+                {item.direction !== 'self' && (
+                  <ConfirmButton label={`Заблокировать: ${who}`} confirmLabel="Блок?" onConfirm={() => void block(item)}>
+                    <BlockIcon size={18} />
+                  </ConfirmButton>
+                )}
               </li>
             )
           })}

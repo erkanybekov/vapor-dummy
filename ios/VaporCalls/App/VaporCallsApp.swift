@@ -80,6 +80,8 @@ struct MainView: View {
         TabView {
             CallsView(calls: calls)
                 .tabItem { Label("Звонки", systemImage: "phone.fill") }
+            ContactsView(calls: calls)
+                .tabItem { Label("Контакты", systemImage: "person.2.fill") }
             TodosView()
                 .tabItem { Label("Задачи", systemImage: "checklist") }
             ProfileView(calls: calls)

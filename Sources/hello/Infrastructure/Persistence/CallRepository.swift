@@ -113,6 +113,25 @@ final class CallRepository: CallRepositoryProtocol {
         return models.map { $0.toDomain() }
     }
 
+    func page(page: Int, limit: Int) async throws -> (records: [CallRecord], total: Int) {
+        let models = try await CallRecordModel
+            .query(on: database)
+            .sort(\.$startedAt, .descending)
+            .sort(\.$id)
+            .offset((page - 1) * limit)
+            .limit(limit)
+            .all()
+
+        return (records: models.map { $0.toDomain() }, total: try await CallRecordModel.query(on: database).count())
+    }
+
+    func count(since date: Date) async throws -> Int {
+        try await CallRecordModel
+            .query(on: database)
+            .filter(\.$startedAt >= date)
+            .count()
+    }
+
     func finishInterrupted() async throws -> Int {
         let models = try await CallRecordModel
             .query(on: database)

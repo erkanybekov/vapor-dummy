@@ -39,9 +39,25 @@ final class DIContainer {
         )
         app.lifecycle.use(CallRecorderLifecycle(recorder: callRecorder, repository: callRepository, logger: app.logger))
 
+        // Contacts and blocks
+        let contactRepository = ContactRepository(database: app.db)
+        app.contactRepository = contactRepository
+        app.contactUseCase = ContactUseCase(
+            contactRepository: contactRepository,
+            userRepository: app.userRepository!
+        )
+
         // Chat (WebSocket training ground)
         app.chatHub = ChatHub()
         app.chatRepository = ChatRepository(database: app.db)
+
+        // Admin panel
+        app.adminUseCase = AdminUseCase(
+            userRepository: app.userRepository!,
+            callRepository: callRepository,
+            callHub: app.callHub!,
+            chatHub: app.chatHub!
+        )
 
         if app.iceServerProvider?.hasTURN == false {
             app.logger.warning("TURN is not configured: calls between devices behind strict NATs or mobile carriers may fail to connect. Set TURN_URLS and TURN_SECRET.")

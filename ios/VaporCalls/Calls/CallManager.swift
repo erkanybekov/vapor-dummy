@@ -51,6 +51,8 @@ final class CallManager {
     private(set) var usingFrontCamera = true
     /// Incremented whenever a call ends, so history views know to reload.
     private(set) var endedCalls = 0
+    /// Incremented on `contacts.changed`, so the contact list knows to reload.
+    private(set) var contactChanges = 0
     /// A short message for the user (shown as a toast).
     var notice: String?
     /// Live media statistics while a call is connected.
@@ -286,6 +288,9 @@ final class CallManager {
             Log.info("Call ended: \(reason.rawValue)", .call)
             callKit?.reportEnded(id: current.localId, reason: Self.callKitReason(for: reason, role: current.role))
             endLocally()
+
+        case .contactsChanged:
+            contactChanges += 1
 
         case let .error(code, message, _):
             if code == "peer_unavailable" { return } // the peer is reconnecting

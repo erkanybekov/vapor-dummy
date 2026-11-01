@@ -338,6 +338,13 @@ textarea:focus {
   background: #f5a623;
 }
 
+.truncate {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .status-dot.offline,
 .status-dot.replaced {
   background: var(--danger);
@@ -467,6 +474,12 @@ textarea:focus {
 
 .list-item:last-child {
   border-bottom: 0;
+}
+
+.list-actions {
+  display: flex;
+  flex: none;
+  gap: 0;
 }
 
 .list-icon {
@@ -613,6 +626,56 @@ textarea:focus {
   justify-content: center;
   align-items: center;
   gap: 12px;
+}
+
+/* ---------- Admin panel ---------- */
+
+.badge.danger {
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+
+.admin-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 12px;
+  margin: 0;
+}
+
+.admin-stat {
+  padding: 14px 16px;
+}
+
+.admin-stat dd {
+  margin: 2px 0 0;
+  font-size: 26px;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.admin-tabs {
+  max-width: 320px;
+}
+
+.admin-who {
+  min-width: 0;
+}
+
+.admin-name {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+@media (max-width: 760px) {
+  .admin-date {
+    display: none;
+  }
+
+  .admin-tabs {
+    max-width: none;
+  }
 }
 
 /* ---------- Call screen ---------- */

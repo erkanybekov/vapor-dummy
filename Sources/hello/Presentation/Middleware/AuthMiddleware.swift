@@ -54,3 +54,16 @@ struct UserAuthenticator: AsyncMiddleware {
         return try await next.respond(to: request)
     }
 }
+
+// MARK: - Admin Guard
+
+/// Goes after UserAuthenticator. The user is loaded from the database on every
+/// request and the token says nothing about the role, so taking it away works at once.
+struct AdminGuard: AsyncMiddleware {
+    func respond(to request: Request, chainingTo next: any AsyncResponder) async throws -> Response {
+        guard try request.auth.require(User.self).isAdmin else {
+            throw Abort(.forbidden, reason: "Admin access required")
+        }
+        return try await next.respond(to: request)
+    }
+}

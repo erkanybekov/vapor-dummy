@@ -88,8 +88,11 @@ actor CallHub {
 
     // MARK: - Connections
 
-    func connect(_ connection: any SignalingConnection, peer: CallPeer, iceServers: [IceServer]) {
+    /// Returns whether the user just came online.
+    @discardableResult
+    func connect(_ connection: any SignalingConnection, peer: CallPeer, iceServers: [IceServer]) -> Bool {
         let key = DeviceKey(userId: peer.userId, deviceId: peer.deviceId)
+        let wasOnline = isOnline(peer.userId)
 
         if var device = devices[key] {
             // Same device again (network switch, app relaunch): replace the stale
@@ -105,7 +108,7 @@ actor CallHub {
             guard connected < configuration.maxDevicesPerUser else {
                 connection.send(.error(code: .tooManyDevices, message: "Too many devices connected to this account", callId: nil))
                 connection.close()
-                return
+                return false
             }
             devices[key] = Device(peer: peer, connection: connection, callId: nil)
         }
@@ -114,12 +117,15 @@ actor CallHub {
         restoreCallState(for: key)
         broadcastPresence(for: peer.userId)
         logger.info("Device connected", metadata: ["user": "\(peer.userId)", "device": "\(peer.deviceId)"])
+        return !wasOnline
     }
 
-    func disconnect(_ connection: any SignalingConnection, userId: UUID, deviceId: String) {
+    /// Returns whether the user just went offline.
+    @discardableResult
+    func disconnect(_ connection: any SignalingConnection, userId: UUID, deviceId: String) -> Bool {
         let key = DeviceKey(userId: userId, deviceId: deviceId)
         // Ignore sockets that were already replaced by a newer one from the same device.
-        guard devices[key]?.connection === connection else { return }
+        guard devices[key]?.connection === connection else { return false }
 
         let ringingHere = calls.filter { $0.value.ringing.contains(key) }.map(\.key)
         for callId in ringingHere {
@@ -134,6 +140,7 @@ actor CallHub {
         }
         broadcastPresence(for: userId)
         logger.info("Device disconnected", metadata: ["user": "\(userId)", "device": "\(deviceId)"])
+        return !isOnline(userId)
     }
 
     /// Makes every socket of the user authenticate again, which one with a revoked token
@@ -142,6 +149,33 @@ actor CallHub {
         for device in devices.values where device.peer.userId == userId {
             device.connection?.closeForReauthentication()
         }
+    }
+
+    // MARK: - Contacts
+
+    /// Which of these users have at least one device online.
+    func onlineUsers(among userIds: Set<UUID>) -> Set<UUID> {
+        userIds.filter(isOnline)
+    }
+
+    /// Tells the users to reload their contact list. Nothing else travels over the
+    /// socket, so the list cannot drift from what the server knows.
+    func notifyContactsChanged(for userIds: Set<UUID>) {
+        for device in devices.values where userIds.contains(device.peer.userId) {
+            device.connection?.send(.contactsChanged)
+        }
+    }
+
+    private func isOnline(_ userId: UUID) -> Bool {
+        devices.values.contains { $0.peer.userId == userId && $0.connection != nil }
+    }
+
+    // MARK: - Monitoring
+
+    /// What is happening right now, for the admin panel.
+    func liveCounts() -> (onlineUsers: Int, activeCalls: Int) {
+        let online = Set(devices.values.filter { $0.connection != nil }.map(\.peer.userId))
+        return (onlineUsers: online.count, activeCalls: calls.values.filter { $0.answeredBy != nil }.count)
     }
 
     // MARK: - Commands

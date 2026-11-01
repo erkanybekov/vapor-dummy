@@ -6,6 +6,7 @@ export interface User {
   email: string
   username: string
   isActive: boolean
+  isAdmin: boolean
   createdAt?: string
 }
 
@@ -44,6 +45,16 @@ export interface TodoUpdate {
   completed?: boolean
 }
 
+export interface BlockedUser {
+  id: string
+  username: string
+}
+
+export interface Contact extends BlockedUser {
+  /** Always false unless you have added each other. */
+  online: boolean
+}
+
 export type CallStatus = 'ringing' | 'active' | 'completed' | 'missed' | 'declined' | 'busy' | 'unavailable'
 
 export type CallEndReason =
@@ -68,4 +79,45 @@ export interface CallHistoryItem {
   answeredAt?: string
   endedAt?: string
   duration?: number
+}
+
+export interface AdminStats {
+  users: number
+  activeUsers: number
+  admins: number
+  onlineUsers: number
+  activeCalls: number
+  callsLastDay: number
+}
+
+export interface AdminUser extends User {
+  online: boolean
+}
+
+export interface AdminUserPage {
+  users: AdminUser[]
+  pagination: PaginationMeta
+}
+
+export interface AdminUserUpdate {
+  isActive?: boolean
+  isAdmin?: boolean
+}
+
+export interface AdminCall {
+  id: string
+  callerId: string
+  callerUsername?: string
+  calleeId: string
+  calleeUsername?: string
+  video: boolean
+  status: CallStatus
+  endReason?: CallEndReason
+  startedAt: string
+  duration?: number
+}
+
+export interface AdminCallPage {
+  calls: AdminCall[]
+  pagination: PaginationMeta
 }

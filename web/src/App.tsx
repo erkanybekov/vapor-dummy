@@ -3,9 +3,11 @@ import { BrowserRouter, Link, Navigate, Route, Routes, useLocation } from 'react
 import { AppLayout } from './AppLayout'
 import { AuthProvider, useAuth } from './auth/AuthProvider'
 import { CallProvider } from './calls/CallProvider'
+import { AdminPage } from './pages/AdminPage'
 import { AuthPage } from './pages/AuthPage'
 import { CallsPage } from './pages/CallsPage'
 import { ChatPage } from './pages/ChatPage'
+import { ContactsPage } from './pages/ContactsPage'
 import { GuidePage } from './pages/GuidePage'
 import { TodosPage } from './pages/TodosPage'
 import { ToastProvider } from './ui/Toast'
@@ -25,6 +27,12 @@ function RequireAuth({ children }: { children: ReactNode }) {
   if (checking) return <Splash />
   if (!user) return <Navigate to="/login" replace state={{ from: location.pathname }} />
   return children
+}
+
+// Only hides the page: the server checks the role on every /admin request.
+function RequireAdmin({ children }: { children: ReactNode }) {
+  const { user } = useAuth()
+  return user?.isAdmin ? children : <Navigate to="/calls" replace />
 }
 
 function GuestOnly({ children }: { children: ReactNode }) {
@@ -71,9 +79,18 @@ export function App() {
             >
               <Route index element={<Navigate to="/calls" replace />} />
               <Route path="/calls" element={<CallsPage />} />
+              <Route path="/contacts" element={<ContactsPage />} />
               <Route path="/todos" element={<TodosPage />} />
               <Route path="/chat" element={<ChatPage />} />
               <Route path="/guide" element={<GuidePage />} />
+              <Route
+                path="/admin"
+                element={
+                  <RequireAdmin>
+                    <AdminPage />
+                  </RequireAdmin>
+                }
+              />
             </Route>
             <Route path="*" element={<NotFound />} />
           </Routes>

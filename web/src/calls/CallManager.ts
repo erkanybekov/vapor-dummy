@@ -40,6 +40,8 @@ export interface CallSnapshot {
   facingMode: 'user' | 'environment'
   /** Incremented whenever a call ends, so history views know to reload. */
   endedCalls: number
+  /** Incremented on `contacts.changed`, so the contact list knows to reload. */
+  contactChanges: number
   /** Live media statistics while a call is connected. */
   quality: CallQuality | null
 }
@@ -77,6 +79,7 @@ export class CallManager {
     cameraOff: false,
     facingMode: 'user',
     endedCalls: 0,
+    contactChanges: 0,
     quality: null,
   }
   private readonly listeners = new Set<() => void>()
@@ -307,6 +310,10 @@ export class CallManager {
         if (call.id ? call.id !== message.callId : call.role !== 'caller') return
         this.notifyEnded(message.reason)
         this.endLocally()
+        break
+
+      case 'contacts.changed':
+        this.update({ contactChanges: this.snapshot.contactChanges + 1 })
         break
 
       case 'error':

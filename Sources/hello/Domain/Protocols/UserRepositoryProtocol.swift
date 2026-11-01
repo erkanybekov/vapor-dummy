@@ -7,6 +7,10 @@ public protocol UserRepositoryProtocol: Sendable {
     func create(_ user: User) async throws -> User
     func update(_ user: User) async throws -> User
     func delete(by id: UUID) async throws
+    /// One page of users, newest first. `search` matches part of the email or username.
+    func page(search: String?, page: Int, limit: Int) async throws -> (users: [User], total: Int)
+    func counts() async throws -> UserCounts
+    func usernames(of ids: Set<UUID>) async throws -> [UUID: String]
 }
 
 // MARK: - Auth Service Protocol (Domain Layer)

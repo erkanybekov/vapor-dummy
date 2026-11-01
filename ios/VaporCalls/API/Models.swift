@@ -81,3 +81,23 @@ nonisolated struct CallHistoryItem: Codable, Sendable, Identifiable {
 nonisolated struct CallHistoryResponse: Codable, Sendable {
     let calls: [CallHistoryItem]
 }
+
+nonisolated struct Contact: Codable, Sendable, Identifiable, Equatable {
+    let id: UUID
+    let username: String
+    /// Always false unless you have added each other.
+    let online: Bool
+}
+
+nonisolated struct ContactListResponse: Codable, Sendable {
+    let contacts: [Contact]
+}
+
+nonisolated struct BlockedUser: Codable, Sendable, Identifiable, Equatable {
+    let id: UUID
+    let username: String
+}
+
+nonisolated struct BlockedUsersResponse: Codable, Sendable {
+    let users: [BlockedUser]
+}
