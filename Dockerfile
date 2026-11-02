@@ -1,7 +1,18 @@
 # ================================
+# Web app build (web/ → Public/)
+# ================================
+FROM node:24-slim AS web
+WORKDIR /web
+COPY web/package.json web/package-lock.json ./
+RUN npm ci
+COPY web/ ./
+# Vite writes into ../Public, i.e. /Public in this stage
+RUN npm run build
+
+# ================================
 # Build image
 # ================================
-FROM swift:6.0-jammy as build
+FROM swift:6.4-jammy as build
 
 # Install OS updates and dependencies
 RUN export DEBIAN_FRONTEND=noninteractive DEBCONF_NONINTERACTIVE_SEEN=true \
@@ -25,6 +36,9 @@ RUN swift package resolve $([ -f ./Package.resolved ] && echo "--force-resolved-
 
 # Copy entire repo into container
 COPY . .
+
+# Add the built web app next to the other public files
+COPY --from=web /Public/ ./Public/
 
 # Build everything, with optimizations
 RUN swift build -c release --static-swift-stdlib

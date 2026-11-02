@@ -4,6 +4,10 @@ import Vapor
 // MARK: - Todo Use Case
 
 final class TodoUseCase: Sendable {
+    /// Far beyond any real list. Without a cap, `(page - 1) * limit` overflows on a
+    /// huge page number, and in Swift that stops the whole process.
+    static let maxPage = 1_000_000
+
     private let todoRepository: any TodoRepositoryProtocol
     
     init(todoRepository: any TodoRepositoryProtocol) {
@@ -41,7 +45,7 @@ final class TodoUseCase: Sendable {
     
     func getTodosPaginated(for userId: UUID, page: Int, limit: Int) async throws -> (todos: [Todo], total: Int) {
         // Validate pagination parameters
-        let validatedPage = max(1, page)
+        let validatedPage = min(max(1, page), Self.maxPage)
         let validatedLimit = min(max(1, limit), 100) // Max 100 items per page
         
         // Get paginated todos and total count concurrently

@@ -7,6 +7,10 @@ public protocol UserRepositoryProtocol: Sendable {
     func create(_ user: User) async throws -> User
     func update(_ user: User) async throws -> User
     func delete(by id: UUID) async throws
+    /// One page of users, newest first. `search` matches part of the email or username.
+    func page(search: String?, page: Int, limit: Int) async throws -> (users: [User], total: Int)
+    func counts() async throws -> UserCounts
+    func usernames(of ids: Set<UUID>) async throws -> [UUID: String]
 }
 
 // MARK: - Auth Service Protocol (Domain Layer)
@@ -19,14 +23,20 @@ public protocol AuthServiceProtocol: Sendable {
 
 // MARK: - Password Hasher Protocol
 public protocol PasswordHasherProtocol: Sendable {
-    func hash(_ password: String) throws -> String
-    func verify(_ password: String, against hash: String) throws -> Bool
+    func hash(_ password: String) async throws -> String
+    func verify(_ password: String, against hash: String) async throws -> Bool
 }
 
 // MARK: - Token Service Protocol
 public protocol TokenServiceProtocol: Sendable {
     func generateAccessToken(for user: User) async throws -> String
     func generateRefreshToken(for user: User) async throws -> String
-    func validateToken(_ token: String) async throws -> UUID // Returns user ID
+    /// The user ID of a valid access token that has not been revoked.
+    func validateAccessToken(_ token: String) async throws -> UUID
+    /// Validates a refresh token and revokes it in one step, so it works only once.
+    func consumeRefreshToken(_ token: String) async throws -> UUID
+    /// Revokes an access or refresh token; tokens that are already unusable are ignored.
     func revokeToken(_ token: String) async throws
+    /// Deletes revocation records of tokens that have expired anyway.
+    func purgeExpiredRevocations() async throws
 }

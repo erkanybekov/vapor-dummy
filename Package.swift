@@ -1,4 +1,4 @@
-// swift-tools-version:6.0
+// swift-tools-version:6.2
 import PackageDescription
 
 let package = Package(
@@ -8,14 +8,17 @@ let package = Package(
     ],
     dependencies: [
         // 💧 A server-side Swift web framework.
-        .package(url: "https://github.com/vapor/vapor.git", from: "4.115.0"),
-        // 🔑 JSON Web Token signing and verification
-        .package(url: "https://github.com/vapor/jwt.git", from: "5.0.0"),
+        .package(url: "https://github.com/vapor/vapor.git", from: "4.122.0"),
+        // 🔑 JSON Web Token signing and verification. Below 5.2.0 a forged token header
+        // crashes the server without any login (GHSA-hfm2-66rr-3mcf).
+        .package(url: "https://github.com/vapor/jwt.git", from: "5.2.0"),
         // 🗄 An ORM for Swift
         .package(url: "https://github.com/vapor/fluent.git", from: "4.0.0"),
         .package(url: "https://github.com/vapor/fluent-postgres-driver.git", from: "2.0.0"),
         // 🔵 Non-blocking, event-driven networking for Swift. Used for custom executors
         .package(url: "https://github.com/apple/swift-nio.git", from: "2.65.0"),
+        // 🔐 HMAC for short-lived TURN credentials
+        .package(url: "https://github.com/apple/swift-crypto.git", "4.1.0"..<"6.0.0"),
     ],
     targets: [
         .executableTarget(
@@ -27,6 +30,8 @@ let package = Package(
                 .product(name: "FluentPostgresDriver", package: "fluent-postgres-driver"),
                 .product(name: "NIOCore", package: "swift-nio"),
                 .product(name: "NIOPosix", package: "swift-nio"),
+                .product(name: "NIOConcurrencyHelpers", package: "swift-nio"),
+                .product(name: "Crypto", package: "swift-crypto"),
             ],
             swiftSettings: swiftSettings
         ),

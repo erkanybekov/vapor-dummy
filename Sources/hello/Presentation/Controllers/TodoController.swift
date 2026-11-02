@@ -42,7 +42,7 @@ final class TodoController: RouteCollection, Sendable {
             let result = try await todoUseCase.getTodosPaginated(for: userId, page: page, limit: limit)
             let response = PaginatedTodoResponse(
                 todos: result.todos,
-                page: max(1, page),
+                page: min(max(1, page), TodoUseCase.maxPage),
                 limit: min(max(1, limit), 100),
                 total: result.total
             )

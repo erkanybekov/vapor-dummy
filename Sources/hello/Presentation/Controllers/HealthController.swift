@@ -16,12 +16,13 @@ final class HealthController: RouteCollection, Sendable {
         let isDbConnected = await checkDatabaseConnection(req)
         
         let response = [
-            "status": "healthy",
+            "status": isDbConnected ? "healthy" : "unhealthy",
             "database": isDbConnected ? "connected" : "disconnected",
             "timestamp": ISO8601DateFormatter().string(from: Date())
         ]
-        
-        return try await response.encodeResponse(for: req)
+
+        // Monitors and the hosting platform look at the status code, not the body.
+        return try await response.encodeResponse(status: isDbConnected ? .ok : .serviceUnavailable, for: req)
     }
     
     // MARK: - Root Endpoint
